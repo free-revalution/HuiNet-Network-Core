@@ -3,106 +3,232 @@
   <pre>
 ██╗  ██╗██╗   ██╗██╗███╗   ██╗███████╗████████╗
 ██║  ██║██║   ██║██║████╗  ██║██╔════╝╚══██╔══╝
-███████║██║   ██║██║██╔██╗ ██║█████╗     ██║   
-██╔══██║██║   ██║██║██║╚██╗██║██╔══╝     ██║   
-██║  ██║╚██████╔╝██║██║ ╚████║███████╗   ██║   
-╚═╝  ╚═╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝   
+███████║██║   ██║██║██╔██╗ ██║█████╗     ██║
+██╔══██║██║   ██║██║██║╚██╗██║██╔══╝     ██║
+██║  ██║╚██████╔╝██║██║ ╚████║███████╗   ██║
+╚═╝  ╚═╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝
   </pre>
 
-  **Decentralized Agent-to-Agent Networking**
+  **Decentralized P2P Agent Networking**
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
   [![Node Version](https://img.shields.io/badge/node-%3E=16.0.0-green)](https://nodejs.org/)
-  [![codecov](https://codecov.io/gh/free-revalution/HuiNet-Network-Core/branch/main/graph/badge.svg)](https://codecov.io/gh/free-revalution/HuiNet-Network-Core)
 
-  [Features](#features) • [Quick Start](#quick-start) • [Architecture](#architecture) • [API](#api-reference) • [Contributing](#contributing)
+  [Install](#installation) • [Quick Start](#quick-start) • [Commands](#commands) • [Examples](#examples)
 
 </div>
 
 ---
 
-## Overview
+## HuiNet
 
-**HuiNet** is a decentralized Agent-to-Agent (A2A) networking library designed for modern distributed applications. It provides a secure, scalable P2P communication layer with automatic NAT traversal, encrypted messaging, and intelligent node discovery.
-
-Built with TypeScript and leveraging Ed25519 cryptography, HuiNet enables agents to communicate directly across network boundaries while maintaining security and performance.
-
-## Features
-
-- **Hybrid P2P Architecture**: Bootstrap nodes → Super nodes → Direct connections
-- **Public Key Identity**: Ed25519-based node identification with cryptographically secure NodeIDs
-- **NAT Traversal**: Multi-layered strategy (UPnP → STUN → Connection reversal → Relay fallback)
-- **Local Discovery**: mDNS-based automatic peer discovery on local networks
-- **Encrypted Messaging**: End-to-end encryption with Ed25519 signatures
-- **Connection Management**: Tiered strategy (Core/Active/Known) with LRU eviction
-- **TypeScript**: Fully typed with strict mode for maximum safety
-- **Well Tested**: 100+ tests with 75%+ code coverage
+**HuiNet** is a decentralized P2P networking tool for Agent-to-Agent communication. Connect devices across networks with automatic discovery and encrypted messaging.
 
 ## Installation
 
+### Global Install (Recommended)
+
 ```bash
-npm install @huinet/network
+npm install -g @huinet/network
+```
+
+After installation, you can use the `huinet` command from anywhere:
+
+```bash
+huinet
+```
+
+### Local Install
+
+```bash
+# Clone repository
+git clone https://github.com/free-revalution/HuiNet-Network-Core.git
+cd HuiNet-Network-Core
+
+# Install dependencies
+npm install
+
+# Build
+npm run build
+
+# Run
+npm start
 ```
 
 ## Quick Start
 
-```typescript
-import { HuiNet } from '@huinet/network';
-
-const huinet = new HuiNet({
-  listenPort: 8000,
-  enableMDNS: true,
-});
-
-huinet.on('ready', () => {
-  console.log('NodeID:', huinet.getNodeID());
-});
-
-huinet.on('peerConnected', (nodeID) => {
-  console.log('Connected to:', nodeID);
-});
-
-await huinet.start();
-```
-
-## Using the CLI Tool
-
-HuiNet includes a built-in CLI tool for easy P2P communication without writing code.
-
-### Start the CLI
+### Start HuiNet
 
 ```bash
-# From the project directory
-npm start
-
-# Or with custom options
-npm start -- "My Computer" --port 8001
+huinet
 ```
 
-### CLI Commands
+You'll see the welcome screen:
 
 ```
-huinet > help              # Show all commands
-huinet > status            # Show node status
-huinet > ls                # List discovered nodes
-huinet > msg Alice Hello   # Send message to a node
-huinet > quit              # Exit
+╔════════════════════════════════════════════════════════════╗
+║                    🌐 HuiNet v1.0.0                       ║
+╠════════════════════════════════════════════════════════════╣
+║  Name: MyAgent                                             ║
+║  NodeID: 5HueCGue8dnF7iSBz5sYjXx...                       ║
+║  Status: ● Ready                                          ║
+╠════════════════════════════════════════════════════════════╣
+║  💡 Tips:                                                 ║
+║    - Type "help" to see all commands                       ║
+║    - Type "ls" to see discovered nodes                     ║
+║    - Type "quit" to exit                                   ║
+║    - Try natural language: "send hello to Alice"          ║
+╚════════════════════════════════════════════════════════════╝
+
+huinet >
 ```
 
-### Natural Language Support
+### Connect Two Devices
+
+**Device A:**
+```bash
+huinet "Computer A"
+huinet > ls
+```
+
+**Device B:**
+```bash
+huinet "Computer B"
+huinet > ls
+```
+
+Both devices will automatically discover each other on the same network!
+
+### Send Messages
+
+```bash
+huinet > msg Computer B Hello!
+huinet > send a message to Computer B saying How are you?
+```
+
+## Commands
+
+### Basic Commands
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `help` | Show help | `help` |
+| `status` | Show node status | `status` |
+| `ls` | List discovered nodes | `ls` |
+| `quit` | Exit program | `quit` |
+
+### Messaging
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `msg <name> <text>` | Send message | `msg Alice Hello` |
+| `broadcast <text>` | Broadcast to all | `broadcast Hi everyone` |
+| `history` | Show message history | `history` |
+
+### Node Management
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `alias <name> <id>` | Set node alias | `alias Alice 5HueCG...` |
+| `connect <addr>` | Manual connect | `connect 192.168.1.100:8000` |
+| `disconnect <name>` | Disconnect | `disconnect Alice` |
+
+### Natural Language
+
+You can use natural language instead of commands:
 
 ```
-huinet > send a message to Alice saying hello
-huinet > show me all nodes
-huinet > what's my status
+send a message to Alice saying hello
+show me all the nodes
+what's my status
+disconnect from Alice
 ```
 
-See [README_CLI.md](README_CLI.md) for complete CLI documentation.
+## Options
+
+```bash
+huinet [name] [options]
+
+Options:
+  -p, --port <number>      Listen port (default: 8000)
+  -h, --host <address>     Listen address (default: 0.0.0.0)
+  --no-mdns                Disable mDNS discovery
+  -b, --bootstrap <addr>   Bootstrap node address
+```
+
+**Examples:**
+
+```bash
+# Custom name and port
+huinet "My Computer" --port 8001
+
+# Cross-internet (disable mDNS)
+huinet --no-mdns --bootstrap "server.com:9000"
+
+# Specify host
+huinet --host 192.168.1.100
+```
+
+## How It Works
+
+```
+┌─────────────────┐         ┌─────────────────┐
+│   Computer A     │         │   Computer B     │
+│   192.168.1.100  │         │   192.168.1.101  │
+│   Port: 8000     │ <──────> │   Port: 8000     │
+│   mDNS: ON       │   WiFi   │   mDNS: ON       │
+└─────────────────┘         └─────────────────┘
+        │                           │
+        └─────── Auto Discovery ─────┘
+```
+
+### Features
+
+- **Auto Discovery**: Automatically finds other HuiNet nodes on your network
+- **Encrypted**: Ed25519 public-key cryptography
+- **Simple**: No coding required, just type commands
+- **Cross-Network**: Works across different networks with bootstrap nodes
+
+## Use Cases
+
+- **Home Automation**: Connect smart devices across your home network
+- **Team Chat**: Create a private P2P chat network
+- **File Sharing**: Share files directly between devices
+- **IoT Coordination**: Coordinate IoT devices without a server
+
+## Configuration
+
+Configuration is stored in `~/.huinet/config.json`:
+
+```json
+{
+  "name": "MyAgent",
+  "aliases": {
+    "Alice": "5HueCGue8dnF7iSBz5sYjXxMxq9"
+  },
+  "messageHistory": [...]
+}
+```
+
+## Troubleshooting
+
+**Q: Nodes not discovering each other?**
+- Check both devices are on the same network
+- Ensure firewall allows port 8000
+- Verify mDNS is enabled (default)
+
+**Q: Port already in use?**
+```bash
+huinet --port 8001
+```
+
+**Q: How to reset configuration?**
+```bash
+huinet reset --force
+```
 
 ## Architecture
-
-HuiNet implements a three-layer hybrid architecture designed for scalability and resilience:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -117,212 +243,46 @@ HuiNet implements a three-layer hybrid architecture designed for scalability and
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Node Identity
-
-Each node has a unique identity based on Ed25519 public key cryptography:
-
-- **NodeID**: Base58-encoded SHA-256 hash of the public key
-- **KeyPair**: Ed25519 key pair for signing and verification
-- **Address**: Network address (IP:port) for connections
-
-### NAT Traversal Strategy
-
-The library automatically tries multiple NAT traversal techniques in order:
-
-1. **UPnP**: Automatic port forwarding (if supported)
-2. **STUN**: Public address discovery
-3. **Connection Reversal**: Outbound connection trick
-4. **Relay**: Fall back to SuperNode relay
-
-### Connection Management
-
-HuiNet maintains three tiers of connections:
-
-- **Core Nodes**: Permanent connections to critical infrastructure
-- **Active Nodes**: Frequently-used peers with automatic reconnection
-- **Known Nodes**: Discovered peers available for on-demand connections
-
-## API Reference
-
-### HuiNet Class
-
-Main class for creating and managing a HuiNet node.
-
-#### Constructor Options
-
-```typescript
-interface HuiNetConfig {
-  keyPair?: KeyPair;              // Optional: Ed25519 key pair (auto-generated if not provided)
-  listenPort?: number;            // Optional: Port to listen on (default: 8000)
-  listenHost?: string;            // Optional: Host to bind to (default: '0.0.0.0')
-  bootstrapNodes?: string[];      // Optional: Bootstrap node addresses
-  maxCoreConnections?: number;    // Optional: Max core connections (default: 10)
-  maxActiveConnections?: number;  // Optional: Max active connections (default: 50)
-  enableMDNS?: boolean;           // Optional: Enable mDNS discovery (default: true)
-}
-```
-
-#### Methods
-
-| Method | Description |
-|--------|-------------|
-| `start()` | Start the network service |
-| `stop()` | Stop the network service |
-| `getNodeID()` | Get the node's unique identifier |
-| `getPublicKey()` | Get the node's public key |
-| `send(targetNodeID, message)` | Send a message to a specific node |
-| `getRoutingTable()` | Get the routing table instance |
-| `getConnectionPool()` | Get the connection pool instance |
-
-#### Events
-
-| Event | Description |
-|-------|-------------|
-| `ready` | Emitted when the node is ready |
-| `nodeDiscovered` | Emitted when a new node is discovered |
-| `peerConnected` | Emitted when a connection is established |
-| `peerDisconnected` | Emitted when a connection is closed |
-
-## Examples
-
-### Basic Usage
-
-```typescript
-import { HuiNet } from '@huinet/network';
-
-const huinet = new HuiNet({
-  listenPort: 8000,
-  enableMDNS: true,
-});
-
-huinet.on('ready', () => {
-  console.log('HuiNet ready! NodeID:', huinet.getNodeID());
-});
-
-huinet.on('peerConnected', (nodeID) => {
-  console.log('Connected to:', nodeID);
-});
-
-await huinet.start();
-```
-
-### Sending Messages
-
-```typescript
-// Send a message to a specific node
-await huinet.send(targetNodeID, {
-  type: 'greeting',
-  data: 'Hello from HuiNet!'
-});
-```
-
-### Custom Key Pair
-
-```typescript
-import { generateKeyPair } from '@huinet/network';
-
-const myKeyPair = generateKeyPair();
-
-const huinet = new HuiNet({
-  keyPair: myKeyPair,
-  listenPort: 8000,
-});
-
-await huinet.start();
-```
-
 ## Development
 
 ```bash
-# Clone the repository
+# Clone repository
 git clone https://github.com/free-revalution/HuiNet-Network-Core.git
 cd HuiNet-Network-Core
 
 # Install dependencies
 npm install
 
-# Build the project
-npm run build
-
 # Run tests
 npm test
 
-# Watch mode
-npm run test:watch
-
-# Run tests with coverage
-npm run test:coverage
-
-# Lint code
-npm run lint
-
-# Run example
+# Build
 npm run build
-npx ts-node examples/basic-usage.ts
+
+# Run in development mode
+npm run dev
 ```
-
-## Project Structure
-
-```
-HuiNet-Network-Core/
-├── src/
-│   ├── crypto/          # Cryptographic operations (Ed25519, signatures)
-│   ├── discovery/       # Peer discovery (mDNS, bootstrap)
-│   ├── protocol/        # Message protocol and varint encoding
-│   ├── routing/         # Routing table (Core/Active/Known)
-│   ├── transport/       # Connection pool with LRU eviction
-│   ├── types/           # TypeScript type definitions
-│   ├── utils/           # Utility functions (Base58, etc.)
-│   └── HuiNet.ts        # Main orchestrating class
-├── examples/            # Usage examples
-├── __tests__/           # Test suites (108 tests, 75% coverage)
-├── docs/                # Additional documentation (gitignored)
-└── package.json
-```
-
-## Testing
-
-HuiNet maintains comprehensive test coverage:
-
-- **108 tests** across 9 test suites
-- **75%+ code coverage** (statements, branches, functions, lines)
-- Tests cover all core functionality including crypto, encoding, routing, and networking
-
-## Security
-
-HuiNet takes security seriously:
-
-- **Ed25519 Cryptography**: Industry-standard public-key cryptography
-- **Input Validation**: All inputs are validated with size limits
-- **Buffer Overflow Protection**: Bounds checking on all binary operations
-- **DoS Mitigation**: Message size limits (10MB) and connection pooling
-
-See [SECURITY.md](SECURITY.md) for security policies and vulnerability reporting.
 
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## Code of Conduct
-
-Please read and follow our [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
-## Acknowledgments
+## Links
 
-- Built with [TweetNaCl](https://tweetnacl.cr.yp.to/) for cryptographic operations
-- Uses [multicast-dns](https://github.com/mafintosh/multicast-dns) for local discovery
-- Inspired by modern P2P networks and agent communication protocols
+- [GitHub Repository](https://github.com/free-revalution/HuiNet-Network-Core)
+- [Issues](https://github.com/free-revalution/HuiNet-Network-Core/issues)
+- [Discussions](https://github.com/free-revalution/HuiNet-Network-Core/discussions)
 
 ---
 
 <div align="center">
 
-  **Built with ❤️ for the decentralized future**
+**Built with ❤️ for the decentralized future**
 
-  [GitHub](https://github.com/free-revalution/HuiNet-Network-Core) • [Issues](https://github.com/free-revalution/HuiNet-Network-Core/issues) • [Discussions](https://github.com/free-revalution/HuiNet-Network-Core/discussions)
+[GitHub](https://github.com/free-revalution/HuiNet-Network-Core) • [Issues](https://github.com/free-revalution/HuiNet-Network-Core/issues)
 
 </div>
