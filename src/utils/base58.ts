@@ -6,6 +6,7 @@ export class Base58 {
   private static readonly ALPHABET = ALPHABET;
   private static readonly BASE = BASE;
   private static readonly MAP: Record<string, bigint> = {};
+  private static readonly MAX_BUFFER_SIZE = 4096; // 4KB limit to prevent DoS
 
   static {
     for (let i = 0; i < ALPHABET.length; i++) {
@@ -14,6 +15,16 @@ export class Base58 {
   }
 
   static encode(buffer: Buffer): string {
+    // CRITICAL: Handle empty buffer to prevent crash
+    if (buffer.length === 0) {
+      return '';
+    }
+
+    // HIGH: Add size limit validation to prevent DoS
+    if (buffer.length > this.MAX_BUFFER_SIZE) {
+      throw new Error(`Buffer too large: ${buffer.length} > ${this.MAX_BUFFER_SIZE}`);
+    }
+
     let num = BigInt('0x' + buffer.toString('hex'));
     let result = '';
 
@@ -32,6 +43,11 @@ export class Base58 {
   }
 
   static decode(string: string): Buffer {
+    // Handle empty string
+    if (string.length === 0) {
+      return Buffer.alloc(0);
+    }
+
     let num = 0n;
 
     // Count leading zeros (represented as '1' in Base58)
@@ -47,18 +63,21 @@ export class Base58 {
       num = num * this.BASE + this.MAP[char];
     }
 
-    let hex = num.toString(16);
-
-    // Add leading zeros back
-    for (let i = 0; i < leadingZeros; i++) {
-      hex = '00' + hex;
+    // If the string is all '1's (all zeros in original), return buffer of zeros
+    if (num === 0n) {
+      return Buffer.alloc(leadingZeros);
     }
+
+    let hex = num.toString(16);
 
     // Ensure even length for Buffer.from
     if (hex.length % 2 !== 0) {
       hex = '0' + hex;
     }
 
-    return Buffer.from(hex, 'hex');
+    // Add leading zeros back
+    let result = Buffer.alloc(leadingZeros);
+    const valueBuffer = Buffer.from(hex, 'hex');
+    return Buffer.concat([result, valueBuffer]);
   }
 }

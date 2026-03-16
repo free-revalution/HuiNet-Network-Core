@@ -93,7 +93,7 @@ export class HuiNet implements HuiNetNode {
   readonly identity: NodeIdentity;
   readonly peers: Map<string, Peer>;
 
-  constructor(config: NetworkConfig) {
+  constructor(_config: NetworkConfig) {
     this.identity = {} as NodeIdentity;
     this.peers = new Map();
   }
@@ -106,11 +106,11 @@ export class HuiNet implements HuiNetNode {
     throw new Error('Not implemented yet');
   }
 
-  async send(recipient: string, data: Buffer): Promise<void> {
+  async send(_recipient: string, _data: Buffer): Promise<void> {
     throw new Error('Not implemented yet');
   }
 
-  on(event: string, handler: (...args: any[]) => void): void {
+  on(_event: string, _handler: (...args: any[]) => void): void {
     throw new Error('Not implemented yet');
   }
 }
