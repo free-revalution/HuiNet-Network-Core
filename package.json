@@ -12,7 +12,18 @@
     "dev": "ts-node src/index.ts"
   },
   "keywords": ["p2p", "networking", "agent", "a2a"],
+  "author": {
+    "name": "HuiNet Contributors"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/huinet/network.git"
+  },
+  "bugs": {
+    "url": "https://github.com/huinet/network/issues"
+  },
+  "homepage": "https://github.com/huinet/network#readme",
   "devDependencies": {
     "@types/jest": "^29.5.0",
     "@types/node": "^20.0.0",
