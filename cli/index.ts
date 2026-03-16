@@ -1,29 +1,29 @@
 #!/usr/bin/env node
 /**
- * HuiNet CLI - 主入口
+ * HuiNet CLI - Main Entry Point
  *
- * 命令行工具主程序
+ * Command-line interface for HuiNet P2P Agent
  */
 
 import { Command } from 'commander';
-import { startREPL } from './ui/repl';
+import { startREPL } from './repl';
 import { showTitle } from './ui/welcome';
 
 const program = new Command();
 
-// CLI 信息
+// CLI information
 program
   .name('huinet')
-  .description('HuiNet P2P Agent CLI - 简单易用的 P2P 通信命令行工具')
+  .description('HuiNet P2P Agent CLI - Simple command-line interface for P2P communication')
   .version('1.0.0');
 
-// 启动交互式命令行（默认命令）
+// Start interactive REPL (default command)
 program
-  .argument('[name]', 'Agent 名称', 'MyAgent')
-  .option('-p, --port <number>', '监听端口', '8000')
-  .option('-h, --host <address>', '监听地址', '0.0.0.0')
-  .option('--no-mdns', '禁用 mDNS 自动发现')
-  .option('-b, --bootstrap <addresses...>', '引导节点地址')
+  .argument('[name]', 'Agent name', 'MyAgent')
+  .option('-p, --port <number>', 'Listen port', '8000')
+  .option('-h, --host <address>', 'Listen address', '0.0.0.0')
+  .option('--no-mdns', 'Disable mDNS discovery')
+  .option('-b, --bootstrap <addresses...>', 'Bootstrap node addresses')
   .action(async (name, options) => {
     try {
       await startREPL({
@@ -34,39 +34,39 @@ program
         bootstrap: options.bootstrap
       });
     } catch (error) {
-      console.error('❌ 启动失败:', (error as Error).message);
+      console.error('❌ Startup failed:', (error as Error).message);
       process.exit(1);
     }
   });
 
-// 添加别名命令
+// Add alias command
 program
   .command('alias')
-  .description('管理节点别名')
-  .argument('<name>', '别名')
-  .argument('<nodeID>', '节点 ID')
+  .description('Manage node aliases')
+  .argument('<name>', 'Alias name')
+  .argument('<nodeID>', 'Node ID')
   .action((name, nodeID) => {
     const { ConfigManager } = require('./storage/config');
     const config = ConfigManager.getInstance();
     config.addAlias(name, nodeID);
     config.save();
-    console.log(`✅ 已设置别名: ${name} = ${nodeID.substring(0, 20)}...`);
+    console.log(`✅ Alias set: ${name} = ${nodeID.substring(0, 20)}...`);
   });
 
-// 列出别名命令
+// List aliases command
 program
   .command('aliases')
-  .description('列出所有别名')
+  .description('List all aliases')
   .action(() => {
     const { ConfigManager } = require('./storage/config');
     const config = ConfigManager.getInstance();
     const aliases = config.getAliases();
 
-    showTitle('📋 节点别名');
+    showTitle('📋 Node Aliases');
 
     if (Object.keys(aliases).length === 0) {
-      console.log('  (还没有设置任何别名)');
-      console.log('  使用: huinet alias <名称> <NodeID>');
+      console.log('  (No aliases set yet)');
+      console.log('  Use: huinet alias <name> <NodeID>');
     } else {
       for (const [name, nodeID] of Object.entries(aliases)) {
         console.log(`  ${name.padEnd(20)} = ${nodeID}`);
@@ -74,11 +74,11 @@ program
     }
   });
 
-// 清理配置命令
+// Reset configuration command
 program
   .command('reset')
-  .description('重置所有配置')
-  .option('-f, --force', '强制重置，不询问确认')
+  .description('Reset all configuration')
+  .option('-f, --force', 'Force reset without confirmation')
   .action((options) => {
     const readline = require('readline');
     const rl = readline.createInterface({
@@ -94,9 +94,9 @@ program
 
       if (fs.existsSync(configPath)) {
         fs.unlinkSync(configPath);
-        console.log('✅ 配置已重置');
+        console.log('✅ Configuration reset');
       } else {
-        console.log('ℹ️ 没有找到配置文件');
+        console.log('ℹ️ No configuration file found');
       }
 
       rl.close();
@@ -105,16 +105,16 @@ program
     if (options.force) {
       confirm();
     } else {
-      rl.question('⚠️ 确定要删除所有配置吗？(yes/no): ', (answer: string) => {
+      rl.question('⚠️ Are you sure you want to delete all configuration? (yes/no): ', (answer: string) => {
         if (answer.toLowerCase() === 'yes' || answer.toLowerCase() === 'y') {
           confirm();
         } else {
-          console.log('❌ 已取消');
+          console.log('❌ Cancelled');
           rl.close();
         }
       });
     }
   });
 
-// 解析命令行参数
+// Parse command line arguments
 program.parse();

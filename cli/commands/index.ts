@@ -4,7 +4,7 @@
  * 处理用户输入的所有命令
  */
 
-import { HuiNet } from '@huinet/network';
+import { HuiNet } from '../../src';
 import { ConfigManager } from '../storage/config';
 import { parseNaturalLanguage } from '../nlp/parser';
 import * as cmd from './handlers';

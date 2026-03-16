@@ -1,9 +1,12 @@
 {
   "name": "@huinet/network",
   "version": "0.1.0",
-  "description": "Decentralized A2A networking library",
+  "description": "Decentralized Agent-to-Agent (A2A) networking library with P2P communication",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "huinet": "./bin/huinet"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -11,33 +14,40 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "bin",
+    "cli"
   ],
   "scripts": {
     "build": "tsc",
+    "build:cli": "tsc",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "lint": "eslint src --ext .ts",
-    "prepublishOnly": "npm run build && npm test"
+    "lint": "eslint src cli --ext .ts",
+    "prepublishOnly": "npm run build && npm test",
+    "start": "node dist/cli/index.js",
+    "dev": "ts-node cli/index.ts"
   },
   "keywords": [
     "p2p",
     "networking",
     "agent",
     "a2a",
-    "decentralized"
+    "decentralized",
+    "cli",
+    "huinet"
   ],
   "author": "HuiNet Contributors",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/huinet/network.git"
+    "url": "https://github.com/free-revalution/HuiNet-Network-Core.git"
   },
   "bugs": {
-    "url": "https://github.com/huinet/network/issues"
+    "url": "https://github.com/free-revalution/HuiNet-Network-Core/issues"
   },
-  "homepage": "https://github.com/huinet/network#readme",
+  "homepage": "https://github.com/free-revalution/HuiNet-Network-Core#readme",
   "devDependencies": {
     "@types/jest": "^29.5.0",
     "@types/node": "^20.0.0",
@@ -50,6 +60,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
+    "commander": "^11.1.0",
     "multicast-dns": "^7.2.5",
     "tweetnacl": "^1.0.3"
   }

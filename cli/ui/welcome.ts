@@ -2,7 +2,7 @@
  * 欢迎界面和显示辅助函数
  */
 
-import { HuiNet } from '@huinet/network';
+import { HuiNet } from '../../src';
 
 /**
  * 显示欢迎界面

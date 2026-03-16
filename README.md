@@ -66,6 +66,40 @@ huinet.on('peerConnected', (nodeID) => {
 await huinet.start();
 ```
 
+## Using the CLI Tool
+
+HuiNet includes a built-in CLI tool for easy P2P communication without writing code.
+
+### Start the CLI
+
+```bash
+# From the project directory
+npm start
+
+# Or with custom options
+npm start -- "My Computer" --port 8001
+```
+
+### CLI Commands
+
+```
+huinet > help              # Show all commands
+huinet > status            # Show node status
+huinet > ls                # List discovered nodes
+huinet > msg Alice Hello   # Send message to a node
+huinet > quit              # Exit
+```
+
+### Natural Language Support
+
+```
+huinet > send a message to Alice saying hello
+huinet > show me all nodes
+huinet > what's my status
+```
+
+See [README_CLI.md](README_CLI.md) for complete CLI documentation.
+
 ## Architecture
 
 HuiNet implements a three-layer hybrid architecture designed for scalability and resilience:

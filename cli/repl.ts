@@ -5,9 +5,9 @@
  */
 
 import readline from 'readline';
-import { HuiNet } from '@huinet/network';
-import { handleCommand, showWelcome } from '../commands';
-import { ConfigManager } from '../storage/config';
+import { HuiNet } from '../src';
+import { handleCommand, showWelcome } from './commands';
+import { ConfigManager } from './storage/config';
 
 export interface REPLOptions {
   name: string;
