@@ -4,22 +4,31 @@
   "description": "Decentralized A2A networking library",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "lint": "eslint src --ext .ts",
-    "dev": "ts-node src/index.ts"
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "p2p",
     "networking",
     "agent",
-    "a2a"
+    "a2a",
+    "decentralized"
   ],
-  "author": {
-    "name": "HuiNet Contributors"
-  },
+  "author": "HuiNet Contributors",
   "license": "MIT",
   "repository": {
     "type": "git",
