@@ -26,6 +26,28 @@ describe('Signature', () => {
 
       expect(sig1).not.toEqual(sig2);
     });
+
+    it('should handle empty message', () => {
+      const message = Buffer.alloc(0);
+      const signature = signMessage(message, keyPair.privateKey);
+
+      expect(signature).toBeInstanceOf(Buffer);
+      expect(signature.length).toBe(64);
+
+      const valid = verifySignature(message, signature, keyPair.publicKey);
+      expect(valid).toBe(true);
+    });
+
+    it('should throw on invalid message', () => {
+      expect(() => signMessage('not a buffer' as any, keyPair.privateKey)).toThrow('Message must be a Buffer');
+    });
+
+    it('should throw on invalid private key', () => {
+      const message = Buffer.from('test');
+      const invalidKey = Buffer.alloc(32); // Wrong size
+
+      expect(() => signMessage(message, invalidKey)).toThrow('Invalid private key length');
+    });
   });
 
   describe('verifySignature', () => {
@@ -55,6 +77,30 @@ describe('Signature', () => {
       const wrongKeyPair = generateKeyPair();
       const valid = verifySignature(message, signature, wrongKeyPair.publicKey);
       expect(valid).toBe(false);
+    });
+
+    it('should throw on invalid message', () => {
+      const signature = signMessage(Buffer.from('test'), keyPair.privateKey);
+
+      expect(() => verifySignature('not a buffer' as any, signature, keyPair.publicKey))
+        .toThrow('Message must be a Buffer');
+    });
+
+    it('should throw on invalid signature', () => {
+      const message = Buffer.from('test');
+      const invalidSignature = Buffer.alloc(32); // Wrong size
+
+      expect(() => verifySignature(message, invalidSignature, keyPair.publicKey))
+        .toThrow('Invalid signature length');
+    });
+
+    it('should throw on invalid public key', () => {
+      const message = Buffer.from('test');
+      const signature = signMessage(message, keyPair.privateKey);
+      const invalidKey = Buffer.alloc(16); // Wrong size
+
+      expect(() => verifySignature(message, signature, invalidKey))
+        .toThrow('Invalid public key length');
     });
   });
 });
