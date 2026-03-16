@@ -80,15 +80,18 @@ describe('HuiNet', () => {
       const node1 = new HuiNet({ listenPort: 0, enableMDNS: false });
       const node2 = new HuiNet({ listenPort: 0, enableMDNS: false });
 
-      await node1.start();
-      await node2.start();
+      try {
+        await node1.start();
+        await node2.start();
 
-      // This will be a mock for now - actual connection will be implemented later
-      // For now, we test the API exists
-      expect(typeof node1.send).toBe('function');
-
-      await node1.stop();
-      await node2.stop();
+        // This will be a mock for now - actual connection will be implemented later
+        // For now, we test the API exists
+        expect(typeof node1.send).toBe('function');
+      } finally {
+        // Ensure cleanup even if tests fail
+        await node1.stop().catch(() => {});
+        await node2.stop().catch(() => {});
+      }
     });
   });
 });
