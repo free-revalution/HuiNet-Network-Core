@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📖 Documentation
+    url: https://github.com/free-revalution/HuiNet-Network-Core#readme
+    about: Check the documentation first to see if your question is already answered
+  - name: 💬 Discussions
+    url: https://github.com/free-revalution/HuiNet-Network-Core/discussions
+    about: Use GitHub Discussions for questions, ideas, and general conversation
+  - name: 🔒 Security Policy
+    url: https://github.com/free-revalution/HuiNet-Network-Core/blob/main/SECURITY.md
+    about: For security vulnerabilities, please follow our security disclosure policy
+  - name: 🤝 Contributing Guidelines
+    url: https://github.com/free-revalution/HuiNet-Network-Core/blob/main/CONTRIBUTING.md
+    about: Read our contributing guidelines before submitting pull requests
