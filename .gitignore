@@ -26,8 +26,11 @@ yarn-error.log*
 coverage/
 .nyc_output/
 
-# Documentation
-docs/
+# Documentation (exclude generated docs, but keep plans)
+docs/*.md
+!docs/plans/
+docs/暂无/
+docs/测试/
 
 # Environment
 .env
