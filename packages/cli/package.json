@@ -1,0 +1,40 @@
+{
+  "name": "@huinet/cli",
+  "version": "1.0.0",
+  "description": "HuiNet P2P Agent CLI Tool - Simple command-line interface for agent communication",
+  "bin": {
+    "huinet": "./bin/huinet"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "p2p",
+    "cli",
+    "agent",
+    "networking",
+    "huinet"
+  ],
+  "author": "HuiNet Contributors",
+  "license": "MIT",
+  "dependencies": {
+    "@huinet/network": "^1.0.0",
+    "chalk": "^5.3.0",
+    "commander": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.0"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md"
+  ]
+}
