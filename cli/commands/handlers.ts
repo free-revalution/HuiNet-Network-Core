@@ -4,7 +4,7 @@
 
 import { HuiNet } from '../../src';
 import { ConfigManager } from '../storage/config';
-import { showTitle, showSeparator, showHelp as uiShowHelp } from '../ui/welcome';
+import { showHelp as uiShowHelp, showMessage, clearScreen, showWelcome as uiShowWelcome } from '../ui/display';
 
 /**
  * Show help
@@ -25,16 +25,27 @@ export async function showStatus(huinet: HuiNet, config: ConfigManager): Promise
   const knownNodes = routing.getKnownNodes();
   const coreNodes = routing.getCoreNodes();
 
-  showTitle('📊 My Node Status');
-
+  console.log('');
+  console.log('  Node Status:');
   console.log(`  Name: ${name}`);
-  console.log(`  NodeID: ${nodeID}`);
+  console.log(`  NodeID: ${nodeID.substring(0, 30)}...`);
   console.log(`  Listen Port: ${(huinet as any).config?.listenPort || 'N/A'}`);
   console.log(`  Connected Nodes: ${activeNodes.length}`);
   console.log(`  Known Nodes: ${knownNodes.length}`);
   console.log(`  Core Nodes: ${coreNodes.length}`);
+  console.log('');
+  showMessage('info', 'Type "fullnodeid" to see complete NodeID');
+}
 
-  showSeparator();
+/**
+ * Show full NodeID
+ */
+export function showFullNodeID(huinet: HuiNet): void {
+  const nodeID = huinet.getNodeID();
+  console.log('');
+  console.log('  Complete NodeID:');
+  console.log(`  ${nodeID}`);
+  console.log('');
 }
 
 /**
@@ -44,14 +55,17 @@ export async function listNodes(huinet: HuiNet, config: ConfigManager): Promise<
   const routing = huinet.getRoutingTable();
   const aliases = config.get('aliases') || {};
 
-  showTitle('📋 Discovered Nodes');
+  console.log('');
+  console.log('  Discovered Nodes:');
+  console.log('');
 
   const knownNodes = routing.getKnownNodes();
   const activeNodes = routing.getActiveNodes();
 
   if (knownNodes.length === 0) {
-    console.log('  (No nodes discovered yet)');
-    console.log('  💡 Wait for mDNS auto-discovery, or use connect command');
+    showMessage('warning', 'No nodes discovered yet');
+    console.log('  • Wait for mDNS auto-discovery');
+    console.log('  • Or use "connect <address>" to manually connect');
   } else {
     // Create a Set of active node IDs for quick lookup
     const activeNodeIDs = new Set(activeNodes.map(n => n.nodeID));
@@ -66,12 +80,34 @@ export async function listNodes(huinet: HuiNet, config: ConfigManager): Promise<
       console.log(`  ${index++}. ${emoji} ${alias}`);
       console.log(`      Status: ${status}`);
       console.log(`      Address: ${node.addresses[0] || 'N/A'}`);
-      console.log(`      NodeID: ${node.nodeID.substring(0, 20)}...`);
+      console.log(`      NodeID: ${node.nodeID.substring(0, 30)}...`);
       console.log('');
     }
   }
+}
 
-  showSeparator();
+/**
+ * List all aliases
+ */
+export function listAliases(config: ConfigManager): void {
+  const aliases = config.get('aliases') || {};
+
+  console.log('');
+  console.log('  Node Aliases:');
+  console.log('');
+
+  const aliasKeys = Object.keys(aliases);
+
+  if (aliasKeys.length === 0) {
+    showMessage('info', 'No aliases set');
+    console.log('  Use: alias <name> <NodeID>');
+  } else {
+    for (const [name, nodeID] of Object.entries(aliases)) {
+      console.log(`  ${name.padEnd(20)} = ${nodeID}`);
+    }
+  }
+
+  console.log('');
 }
 
 /**
@@ -83,8 +119,8 @@ export async function sendMessage(
   args: string[]
 ): Promise<void> {
   if (args.length < 2) {
-    console.log('❌ Usage: msg <alias> <message>');
-    console.log('   Example: msg Alice Hello');
+    showMessage('error', 'Usage: msg <name> <message>');
+    console.log('  Example: msg Alice Hello');
     return;
   }
 
@@ -94,27 +130,30 @@ export async function sendMessage(
   // Resolve node ID
   const nodeID = resolveNodeID(config, alias);
   if (!nodeID) {
-    console.log(`❌ Node not found: ${alias}`);
-    console.log('   Use "ls" to see available nodes');
-    console.log('   Use "alias" command to set an alias');
+    showMessage('error', `Node not found: ${alias}`);
+    console.log('  Use "ls" to see available nodes');
+    console.log('  Use "alias" command to set an alias');
     return;
   }
 
   // Send message
   try {
-    console.log(`📤 Sending message to ${alias}...`);
+    console.log('');
+    showMessage('info', `Sending message to ${alias}...`);
     await huinet.send(nodeID, {
       type: 'chat',
       text: message,
       timestamp: Date.now()
     });
-    console.log('✅ Message sent');
+    showMessage('success', 'Message sent!');
 
     // Add to history
     addHistory(config, 'sent' as const, alias, message);
   } catch (error) {
-    console.log(`❌ Send failed: ${(error as Error).message}`);
+    showMessage('error', `Send failed: ${(error as Error).message}`);
   }
+
+  console.log('');
 }
 
 /**
@@ -127,7 +166,7 @@ export async function broadcastMessage(
 ): Promise<void> {
   const message = args.join(' ');
   if (!message) {
-    console.log('❌ Usage: broadcast <message>');
+    showMessage('error', 'Usage: broadcast <message>');
     return;
   }
 
@@ -135,11 +174,12 @@ export async function broadcastMessage(
   const activeNodes = routing.getActiveNodes();
 
   if (activeNodes.length === 0) {
-    console.log('❌ No connected nodes');
+    showMessage('warning', 'No connected nodes');
     return;
   }
 
-  console.log(`📢 Broadcasting to ${activeNodes.length} nodes...`);
+  console.log('');
+  showMessage('info', `Broadcasting to ${activeNodes.length} nodes...`);
 
   let successCount = 0;
   for (const node of activeNodes) {
@@ -151,12 +191,13 @@ export async function broadcastMessage(
       });
       successCount++;
     } catch (error) {
-      console.log(`   ❌ Failed to send to ${node.addresses[0]}`);
+      console.log(`  ❌ Failed to send to ${node.addresses[0]}`);
     }
   }
 
-  console.log(`✅ Broadcast complete, ${successCount}/${activeNodes.length} successful`);
+  showMessage('success', `Broadcast complete: ${successCount}/${activeNodes.length} successful`);
   addHistory(config, 'sent' as const, 'all', message);
+  console.log('');
 }
 
 /**
@@ -164,8 +205,8 @@ export async function broadcastMessage(
  */
 export function setAlias(config: ConfigManager, args: string[]): void {
   if (args.length < 2) {
-    console.log('❌ Usage: alias <name> <NodeID>');
-    console.log('   Example: alias Alice 5HueCGue8dnF7iSBz5sYjXxMxq9');
+    showMessage('error', 'Usage: alias <name> <NodeID>');
+    console.log('  Example: alias Alice 5HueCGue8dnF7iSBz5sYjXxMxq9');
     return;
   }
 
@@ -174,14 +215,14 @@ export function setAlias(config: ConfigManager, args: string[]): void {
 
   // Validate NodeID format
   if (nodeID.length < 20) {
-    console.log('❌ Invalid NodeID format');
+    showMessage('error', 'Invalid NodeID format');
     return;
   }
 
   config.setNested(`aliases.${alias}`, nodeID);
   config.save();
 
-  console.log(`✅ Alias set: ${alias} = ${nodeID.substring(0, 20)}...`);
+  showMessage('success', `Alias set: ${alias} = ${nodeID.substring(0, 20)}...`);
 }
 
 /**
@@ -189,16 +230,15 @@ export function setAlias(config: ConfigManager, args: string[]): void {
  */
 export async function connectTo(huinet: HuiNet, args: string[]): Promise<void> {
   if (args.length === 0) {
-    console.log('❌ Usage: connect <address>');
-    console.log('   Example: connect 192.168.1.100:8000');
+    showMessage('error', 'Usage: connect <address>');
+    console.log('  Example: connect 192.168.1.100:8000');
     return;
   }
 
   const address = args[0];
-  console.log(`🔗 Connecting to ${address}...`);
-
-  // Note: This requires extending HuiNet implementation
-  console.log('ℹ️ This feature requires extending HuiNet implementation');
+  console.log('');
+  showMessage('info', `Connecting to ${address}...`);
+  showMessage('warning', 'This feature requires extending HuiNet implementation');
 }
 
 /**
@@ -213,13 +253,13 @@ export async function disconnectFrom(
   const nodeID = resolveNodeID(config, alias);
 
   if (!nodeID) {
-    console.log(`❌ Node not found: ${alias}`);
+    showMessage('error', `Node not found: ${alias}`);
     return;
   }
 
-  console.log(`🔌 Disconnecting from ${alias}...`);
-  // Note: This requires extending HuiNet implementation
-  console.log('ℹ️ This feature requires extending HuiNet implementation');
+  console.log('');
+  showMessage('info', `Disconnecting from ${alias}...`);
+  showMessage('warning', 'This feature requires extending HuiNet implementation');
 }
 
 /**
@@ -228,10 +268,12 @@ export async function disconnectFrom(
 export function showHistory(config: ConfigManager): void {
   const history = config.get('messageHistory') || [];
 
-  showTitle('📜 Message History');
+  console.log('');
+  console.log('  Message History:');
+  console.log('');
 
   if (history.length === 0) {
-    console.log('  (No message history yet)');
+    showMessage('info', 'No message history yet');
   } else {
     history.slice(-10).forEach((entry: any) => {
       const time = new Date(entry.timestamp).toLocaleTimeString();
@@ -240,14 +282,15 @@ export function showHistory(config: ConfigManager): void {
     });
   }
 
-  showSeparator();
+  console.log('');
 }
 
 /**
  * Quit program
  */
 export async function quit(huinet: HuiNet): Promise<void> {
-  console.log('\n👋 Exiting...');
+  console.log('');
+  showMessage('info', 'Exiting...');
   await huinet.stop();
   process.exit(0);
 }

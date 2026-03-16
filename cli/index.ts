@@ -7,7 +7,7 @@
 
 import { Command } from 'commander';
 import { startREPL } from './repl';
-import { showTitle } from './ui/welcome';
+import { showTitle } from './ui/display';
 
 const program = new Command();
 

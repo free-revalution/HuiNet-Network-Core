@@ -1,13 +1,14 @@
 /**
- * HuiNet CLI - 交互式命令行界面
+ * HuiNet CLI - Interactive REPL
  *
- * 提供用户友好的命令行交互体验
+ * User-friendly command-line interface for HuiNet
  */
 
 import readline from 'readline';
 import { HuiNet } from '../src';
-import { handleCommand, showWelcome } from './commands';
 import { ConfigManager } from './storage/config';
+import { showWelcome, showMessage } from './ui/display';
+import { handleCommand } from './commands';
 
 export interface REPLOptions {
   name: string;
@@ -18,19 +19,20 @@ export interface REPLOptions {
 }
 
 /**
- * 启动交互式命令行界面
+ * Start interactive REPL
  */
 export async function startREPL(options: REPLOptions): Promise<void> {
-  // 初始化配置管理器
+  // Initialize configuration manager
   const config = ConfigManager.getInstance();
 
-  // 保存配置
+  // Save configuration
   if (options.name) {
     config.set('name', options.name);
   }
 
-  // 创建 HuiNet 实例
-  console.log('\n🚀 正在启动 HuiNet Agent...');
+  // Create HuiNet instance
+  console.log('');
+  showMessage('info', 'Starting HuiNet Agent...');
 
   const huinet = new HuiNet({
     listenPort: options.port,
@@ -39,40 +41,59 @@ export async function startREPL(options: REPLOptions): Promise<void> {
     bootstrapNodes: options.bootstrap,
   });
 
-  // 等待节点就绪
+  // Wait for node to be ready
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
-      reject(new Error('启动超时'));
+      reject(new Error('Startup timeout'));
     }, 10000);
 
     huinet.on('ready', () => {
       clearTimeout(timeout);
+      showMessage('success', 'HuiNet is ready!');
       resolve();
+    });
+
+    huinet.on('nodeDiscovered', (node: any) => {
+      console.log('');
+      showMessage('info', `Discovered node: ${node.nodeId?.substring(0, 20)}...`);
+      console.log(`  Address: ${node.address}`);
+      console.log('');
+    });
+
+    huinet.on('peerConnected', (nodeID: string) => {
+      console.log('');
+      showMessage('success', `Connected to: ${nodeID.substring(0, 20)}...`);
+      console.log('');
+    });
+
+    huinet.on('peerDisconnected', (nodeID: string) => {
+      console.log('');
+      showMessage('warning', `Disconnected from: ${nodeID.substring(0, 20)}...`);
+      console.log('');
     });
 
     huinet.start().catch(reject);
   });
 
-  // 显示欢迎界面
+  // Show welcome screen
   showWelcome(huinet, options.name);
 
-  // 创建 REPL
+  // Create REPL
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: 'huinet > ',
-    // 启用自动补全
+    prompt: 'HUINET > ',
     completer: completer
   });
 
-  // 保存引用以便命令使用
+  // Save references for commands
   (global as any).__huinet = huinet;
   (global as any).__repl = rl;
 
-  // 显示提示符
+  // Show prompt
   rl.prompt();
 
-  // 监听用户输入
+  // Listen for user input
   rl.on('line', async (input) => {
     const cmd = input.trim();
 
@@ -80,22 +101,23 @@ export async function startREPL(options: REPLOptions): Promise<void> {
       try {
         await handleCommand(huinet, cmd, config);
       } catch (error) {
-        console.log(`❌ 错误: ${(error as Error).message}`);
+        showMessage('error', `Error: ${(error as Error).message}`);
       }
     }
 
     rl.prompt();
   });
 
-  // 监听 Ctrl+C
+  // Listen for Ctrl+C
   rl.on('SIGINT', async () => {
-    console.log('\n\n👋 正在退出...');
+    console.log('');
+    showMessage('info', 'Exiting...');
     await huinet.stop();
     rl.close();
     process.exit(0);
   });
 
-  // 监听关闭事件
+  // Listen for close event
   rl.on('close', async () => {
     await huinet.stop();
     process.exit(0);
@@ -103,17 +125,16 @@ export async function startREPL(options: REPLOptions): Promise<void> {
 }
 
 /**
- * 命令自动补全
+ * Command auto-completion
  */
 function completer(line: string): [string[], string] {
   const commands = [
-    'help', 'status', 'ls', 'msg', 'broadcast',
-    'alias', 'connect', 'disconnect', 'history', 'quit'
+    'help', 'status', 'ls', 'fullnodeid', 'msg', 'broadcast',
+    'alias', 'aliases', 'connect', 'disconnect', 'history',
+    'clear', 'quit'
   ];
 
   const hits = commands.filter(c => c.startsWith(line));
 
   return [hits.length ? hits : commands, line];
 }
-
-export { showWelcome };

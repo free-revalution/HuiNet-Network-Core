@@ -27,19 +27,7 @@
 
 ## Installation
 
-### Global Install (Recommended)
-
-```bash
-npm install -g @huinet/network
-```
-
-After installation, you can use the `huinet` command from anywhere:
-
-```bash
-huinet
-```
-
-### Local Install
+### Clone and Install (Recommended)
 
 ```bash
 # Clone repository
@@ -49,11 +37,29 @@ cd HuiNet-Network-Core
 # Install dependencies
 npm install
 
-# Build
+# Build project
 npm run build
 
-# Run
+# Run HuiNet
 npm start
+
+# Optional: Create global link to run from anywhere
+npm link
+# Then you can run: huinet
+```
+
+### Quick Start
+
+After installation, from the project directory:
+
+```bash
+npm start
+```
+
+Or if you created a global link:
+
+```bash
+huinet
 ```
 
 ## Quick Start

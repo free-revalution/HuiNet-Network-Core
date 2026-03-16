@@ -77,9 +77,20 @@ export async function handleCommand(
       cmd.showHistory(config);
       break;
 
+    case 'fullnodeid':
+      cmd.showFullNodeID(huinet);
+      break;
+
+    case 'aliases':
+      cmd.listAliases(config);
+      break;
+
     case 'clear':
     case 'cls':
-      console.clear();
+      const { clearScreen } = require('../ui/display');
+      const { showWelcome } = require('../ui/display');
+      clearScreen();
+      showWelcome(huinet, config.get('name') || 'MyAgent');
       break;
 
     case 'quit':
@@ -88,10 +99,10 @@ export async function handleCommand(
       break;
 
     default:
-      console.log(`❓ 未知命令: ${command}`);
-      console.log('   输入 help 查看可用命令');
-      console.log('   或使用自然语言，如 "给小明发消息说你好"');
+      const { showMessage } = require('../ui/display');
+      showMessage('error', `Unknown command: ${command}`);
+      console.log('  Type "help" to see available commands');
   }
 }
 
-export { showWelcome } from '../ui/welcome';
+export { showWelcome } from '../ui/display';
