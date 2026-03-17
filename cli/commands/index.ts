@@ -9,6 +9,7 @@ import { ConfigManager } from '../storage/config';
 import { parseNaturalLanguage } from '../nlp/parser';
 import { REPLContext } from '../context';
 import * as cmd from './handlers';
+import * as commandOutput from '../ui/command-output';
 
 export async function handleCommand(
   context: REPLContext,
@@ -54,7 +55,7 @@ export async function handleCommand(
 
     case 'msg':
     case 'send':
-      await cmd.sendMessage(context.huinet, context.config, args);
+      await commandOutput.displaySendMessage(context, args);
       break;
 
     case 'broadcast':
@@ -66,7 +67,7 @@ export async function handleCommand(
       break;
 
     case 'connect':
-      await cmd.connectTo(context.huinet, args);
+      await commandOutput.displayConnect(context, args);
       break;
 
     case 'disconnect':

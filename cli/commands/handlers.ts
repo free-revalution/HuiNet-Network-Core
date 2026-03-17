@@ -113,49 +113,32 @@ export function listAliases(config: ConfigManager): void {
 }
 
 /**
- * Send message
+ * Send message - pure business logic
+ * @throws Error if node not found or send fails
  */
 export async function sendMessage(
   huinet: HuiNet,
   config: ConfigManager,
   args: string[]
 ): Promise<void> {
-  if (args.length < 2) {
-    showMessage('error', 'Usage: msg <name> <message>');
-    console.log('  Example: msg Alice Hello');
-    return;
-  }
-
   const alias = args[0];
   const message = args.slice(1).join(' ');
 
   // Resolve node ID
   const nodeID = resolveNodeID(huinet, config, alias);
   if (!nodeID) {
-    showMessage('error', `Node not found: ${alias}`);
-    console.log('  Use "ls" to see available nodes');
-    console.log('  Use "alias" command to set an alias');
-    return;
+    throw new Error(`Node not found: ${alias}`);
   }
 
   // Send message
-  try {
-    console.log('');
-    showMessage('info', `Sending message to ${alias}...`);
-    await huinet.send(nodeID, {
-      type: 'chat',
-      text: message,
-      timestamp: Date.now()
-    });
-    showMessage('success', 'Message sent!');
+  await huinet.send(nodeID, {
+    type: 'chat',
+    text: message,
+    timestamp: Date.now()
+  });
 
-    // Add to history
-    addHistory(config, 'sent' as const, alias, message);
-  } catch (error) {
-    showMessage('error', `Send failed: ${(error as Error).message}`);
-  }
-
-  console.log('');
+  // Add to history
+  addHistory(config, 'sent' as const, alias, message);
 }
 
 /**
@@ -230,40 +213,20 @@ export function setAlias(config: ConfigManager, args: string[]): void {
 }
 
 /**
- * Manual connect
+ * Manual connect - pure business logic
+ * @throws Error if address format is invalid
+ * @returns true if connection initiated successfully, false otherwise
  */
-export async function connectTo(huinet: HuiNet, args: string[]): Promise<void> {
-  if (args.length === 0) {
-    showMessage('error', 'Usage: connect <address>');
-    console.log('  Example: connect 192.168.1.100:8000');
-    return;
-  }
-
+export async function connectTo(huinet: HuiNet, args: string[]): Promise<boolean> {
   const address = args[0];
   const [host, portStr] = address.split(':');
   const port = parseInt(portStr, 10);
 
   if (!host || isNaN(port)) {
-    showMessage('error', 'Invalid address format');
-    console.log('  Usage: connect <host:port>');
-    console.log('  Example: connect 192.168.1.100:8000');
-    return;
+    throw new Error('Invalid address format');
   }
 
-  console.log('');
-  showMessage('info', `Connecting to ${address}...`);
-
-  try {
-    const success = await huinet.connectToNode(host, port);
-
-    if (success) {
-      showMessage('success', `Connected to ${address}`);
-    } else {
-      showMessage('error', `Failed to connect to ${address}`);
-    }
-  } catch (error) {
-    showMessage('error', `Connection error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
+  return await huinet.connectToNode(host, port);
 }
 
 /**
