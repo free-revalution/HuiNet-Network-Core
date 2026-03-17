@@ -14,11 +14,23 @@ Complete API reference for HuiNet - A decentralized Agent-to-Agent (A2A) network
   - [stop()](#stop)
   - [send()](#send)
   - [connectToNode()](#connecttonode)
+  - [disconnectFromNode()](#disconnectfromnode)
   - [getNodeID()](#getnodeid)
   - [getPublicKey()](#getpublickey)
   - [getRoutingTable()](#getroutingtable)
   - [getConnectionPool()](#getconnectionpool)
   - [isRunning()](#isrunning)
+- [Routing Management](#routing-management)
+  - [getConnectedNodes()](#getconnectednodes)
+  - [getRoutingStats()](#getroutingstats)
+  - [promoteToActive()](#promotetoactive)
+  - [promoteToCore()](#promotetocore)
+  - [demoteFromActive()](#demotefromactive)
+  - [demoteFromCore()](#demotefromcore)
+- [Network Utilities](#network-utilities)
+  - [getLocalIPs()](#getlocalips)
+  - [getPrimaryLocalIP()](#getprimarylocalip)
+  - [isSameNetwork()](#issamenetwork)
 - [Events](#events)
   - [ready](#ready)
   - [message](#message)
@@ -96,6 +108,10 @@ interface HuiNetConfig {
   maxCoreConnections?: number;    // Optional: Maximum number of core/persistent connections (default: 10)
   maxActiveConnections?: number;  // Optional: Maximum number of active cached connections (default: 50)
   enableMDNS?: boolean;           // Optional: Enable mDNS discovery (default: true)
+  promoteToActiveThreshold?: number;  // Optional: Connections to promote to Active layer (default: 3)
+  promoteToCoreThreshold?: number;    // Optional: Connections to promote to Core layer (default: 10)
+  routingCleanupInterval?: number;    // Optional: Routing table cleanup interval in ms (default: 300000)
+  maxNodeAge?: number;                // Optional: Maximum node age in ms before cleanup (default: 3600000)
 }
 ```
 
@@ -108,6 +124,10 @@ interface HuiNetConfig {
 - **maxCoreConnections** (`number`, optional): Maximum number of persistent core connections to maintain. Defaults to `10`.
 - **maxActiveConnections** (`number`, optional): Maximum number of active cached connections. Defaults to `50`.
 - **enableMDNS** (`boolean`, optional): Whether to enable mDNS-based peer discovery. Defaults to `true`.
+- **promoteToActiveThreshold** (`number`, optional): Number of connections after which a node is auto-promoted to Active layer. Defaults to `3`.
+- **promoteToCoreThreshold** (`number`, optional): Number of connections after which a node is auto-promoted to Core layer. Defaults to `10`.
+- **routingCleanupInterval** (`number`, optional): Interval in milliseconds for routing table cleanup. Defaults to `300000` (5 minutes).
+- **maxNodeAge** (`number`, optional): Maximum age in milliseconds for a node before cleanup. Defaults to `3600000` (1 hour).
 
 #### Example
 
@@ -132,7 +152,12 @@ const config2: HuiNetConfig = {
   ],
   maxCoreConnections: 20,
   maxActiveConnections: 100,
-  enableMDNS: true
+  enableMDNS: true,
+  // Routing table configuration
+  promoteToActiveThreshold: 5,
+  promoteToCoreThreshold: 15,
+  routingCleanupInterval: 600000,  // 10 minutes
+  maxNodeAge: 7200000               // 2 hours
 };
 
 const huinet = new HuiNet(config2);
@@ -413,6 +438,296 @@ if (huinet.isRunning()) {
 } else {
   console.log('Node is stopped');
 }
+```
+
+---
+
+### disconnectFromNode()
+
+Disconnect from a connected node.
+
+```typescript
+async disconnectFromNode(nodeID: string): Promise<boolean>
+```
+
+#### Parameters
+
+- **nodeID** (`string`): The NodeID of the node to disconnect from
+
+#### Returns
+
+`boolean` - `true` if disconnection succeeded, `false` otherwise
+
+#### Example
+
+```typescript
+const success = await huinet.disconnectFromNode(targetNodeID);
+
+if (success) {
+  console.log('Disconnected successfully');
+} else {
+  console.log('Node not connected or disconnection failed');
+}
+```
+
+---
+
+## Routing Management
+
+### getConnectedNodes()
+
+Get a list of all connected node IDs.
+
+```typescript
+getConnectedNodes(): string[]
+```
+
+#### Returns
+
+`string[]` - Array of connected NodeIDs
+
+#### Example
+
+```typescript
+const connected = huinet.getConnectedNodes();
+console.log(`Connected nodes: ${connected.length}`);
+
+for (const nodeID of connected) {
+  console.log(`- ${nodeID}`);
+}
+```
+
+---
+
+### getRoutingStats()
+
+Get statistics about the routing table.
+
+```typescript
+getRoutingStats(): RoutingStats
+```
+
+#### Returns
+
+`RoutingStats` - Object containing routing statistics:
+- `totalNodes` (`number`): Total number of nodes
+- `coreCount` (`number`): Number of core connections
+- `activeCount` (`number`): Number of active connections
+- `knownCount` (`number`): Number of known nodes
+- `connectionCounts` (`Record<string, number>`): Connection count per node
+
+#### Example
+
+```typescript
+const stats = huinet.getRoutingStats();
+console.log(`Total nodes: ${stats.totalNodes}`);
+console.log(`Core: ${stats.coreCount}, Active: ${stats.activeCount}, Known: ${stats.knownCount}`);
+```
+
+---
+
+### promoteToActive()
+
+Manually promote a node to the Active layer.
+
+```typescript
+promoteToActive(nodeID: string): boolean
+```
+
+#### Parameters
+
+- **nodeID** (`string`): The NodeID of the node to promote
+
+#### Returns
+
+`boolean` - `true` if promotion succeeded, `false` otherwise
+
+#### Example
+
+```typescript
+const promoted = huinet.promoteToActive(nodeID);
+
+if (promoted) {
+  console.log('Node promoted to Active layer');
+} else {
+  console.log('Promotion failed - node not found');
+}
+```
+
+---
+
+### promoteToCore()
+
+Manually promote a node to the Core layer.
+
+```typescript
+promoteToCore(nodeID: string): boolean
+```
+
+#### Parameters
+
+- **nodeID** (`string`): The NodeID of the node to promote
+
+#### Returns
+
+`boolean` - `true` if promotion succeeded, `false` otherwise
+
+#### Example
+
+```typescript
+const promoted = huinet.promoteToCore(nodeID);
+
+if (promoted) {
+  console.log('Node promoted to Core layer - will maintain persistent connection');
+}
+```
+
+---
+
+### demoteFromActive()
+
+Demote a node from Active to Known layer.
+
+```typescript
+demoteFromActive(nodeID: string): boolean
+```
+
+#### Parameters
+
+- **nodeID** (`string`): The NodeID of the node to demote
+
+#### Returns
+
+`boolean` - `true` if demotion succeeded, `false` otherwise
+
+#### Example
+
+```typescript
+const demoted = huinet.demoteFromActive(nodeID);
+
+if (demoted) {
+  console.log('Node demoted from Active to Known');
+}
+```
+
+---
+
+### demoteFromCore()
+
+Demote a node from Core to Active layer.
+
+```typescript
+demoteFromCore(nodeID: string): boolean
+```
+
+#### Parameters
+
+- **nodeID** (`string`): The NodeID of the node to demote
+
+#### Returns
+
+`boolean` - `true` if demotion succeeded, `false` otherwise
+
+#### Example
+
+```typescript
+const demoted = huinet.demoteFromCore(nodeID);
+
+if (demoted) {
+  console.log('Node demoted from Core to Active');
+}
+```
+
+---
+
+## Network Utilities
+
+### getLocalIPs()
+
+Get all local IP addresses with optional filtering.
+
+```typescript
+getLocalIPs(options?: GetLocalIPOptions): string[]
+```
+
+#### Parameters
+
+- **options** (`GetLocalIPOptions`, optional):
+  - `ipv4Only` (`boolean`): Return only IPv4 addresses
+  - `excludeInternal` (`boolean`): Exclude loopback addresses
+  - `interfaceName` (`string`): Filter by interface name
+
+#### Returns
+
+`string[]` - Array of IP addresses
+
+#### Example
+
+```typescript
+// Get all local IPs
+const allIPs = huinet.getLocalIPs();
+
+// Get only IPv4 addresses
+const ipv4Only = huinet.getLocalIPs({ ipv4Only: true });
+
+// Exclude loopback (127.0.0.1)
+const externalIPs = huinet.getLocalIPs({ excludeInternal: true });
+```
+
+---
+
+### getPrimaryLocalIP()
+
+Get the primary local IP address (non-loopback IPv4).
+
+```typescript
+getPrimaryLocalIP(): string
+```
+
+#### Returns
+
+`string` - The primary local IP address
+
+#### Example
+
+```typescript
+const primaryIP = huinet.getPrimaryLocalIP();
+console.log(`Primary IP: ${primaryIP}`);
+```
+
+---
+
+### isSameNetwork()
+
+Check if a node is on the same local network.
+
+```typescript
+isSameNetwork(nodeID: string, subnetMask?: number): boolean
+```
+
+#### Parameters
+
+- **nodeID** (`string`): The NodeID of the target node
+- **subnetMask** (`number`, optional): Subnet mask bits (default: 24)
+
+#### Returns
+
+`boolean` - `true` if on the same network, `false` otherwise
+
+#### Example
+
+```typescript
+// Check if node is on same /24 subnet
+const sameNetwork = huinet.isSameNetwork(targetNodeID, 24);
+
+if (sameNetwork) {
+  console.log('Node is on the same local network');
+} else {
+  console.log('Node is on a different network');
+}
+
+// Check with custom subnet mask
+const sameSubnet = huinet.isSameNetwork(targetNodeID, 16); // /16 subnet
 ```
 
 ---
