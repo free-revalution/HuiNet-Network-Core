@@ -9,6 +9,7 @@ import { HuiNet } from '../src';
 import { ConfigManager } from './storage/config';
 import { showWelcome, showMessage, clearScreen } from './ui/display';
 import { handleCommand } from './commands';
+import { createREPLContext, REPLContext } from './context';
 
 export interface REPLOptions {
   name: string;
@@ -42,7 +43,16 @@ export async function startREPL(options: REPLOptions): Promise<void> {
   });
 
   // Flag to prevent duplicate welcome screen display
-  let welcomeShown = false;
+  // Create readline interface early for event handlers
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    prompt: 'HUINET > ',
+    completer: completer
+  });
+
+  // Create REPL context
+  const context: REPLContext = createREPLContext(huinet, config, rl);
 
   // Wait for node to be ready
   await new Promise<void>((resolve, reject) => {
@@ -55,9 +65,9 @@ export async function startREPL(options: REPLOptions): Promise<void> {
       showMessage('success', 'HuiNet is ready!');
 
       // Show welcome screen only once
-      if (!welcomeShown) {
+      if (!context.welcomeShown) {
         showWelcome(huinet, options.name);
-        welcomeShown = true;
+        context.welcomeShown = true;
       }
 
       resolve();
@@ -69,7 +79,7 @@ export async function startREPL(options: REPLOptions): Promise<void> {
       showMessage('info', `Discovered node: ${node.nodeId?.substring(0, 20)}...`);
       console.log(`  Address: ${node.address}`);
       console.log('');
-      rl.prompt();
+      context.rl.prompt();
     });
 
     // Handle peer connections
@@ -79,7 +89,7 @@ export async function startREPL(options: REPLOptions): Promise<void> {
 
       // Save to routing table
       const routing = huinet.getRoutingTable();
-      const aliases = config.get('aliases') || {};
+      const aliases = context.config.get('aliases') || {};
 
       // Show alias if available
       const alias = Object.keys(aliases).find(key => aliases[key] === nodeID);
@@ -87,7 +97,7 @@ export async function startREPL(options: REPLOptions): Promise<void> {
         console.log(`  Alias: ${alias}`);
       }
       console.log('');
-      rl.prompt();
+      context.rl.prompt();
     });
 
     // Handle peer disconnections
@@ -95,7 +105,7 @@ export async function startREPL(options: REPLOptions): Promise<void> {
       console.log('');
       showMessage('warning', `Disconnected from: ${nodeID.substring(0, 20)}...`);
       console.log('');
-      rl.prompt();
+      context.rl.prompt();
     });
 
     // Handle received messages
@@ -112,66 +122,55 @@ export async function startREPL(options: REPLOptions): Promise<void> {
       }
 
       // Add to history
-      const history = config.get('messageHistory') || [];
+      const history = context.config.get('messageHistory') || [];
       history.push({
         direction: 'received',
         target: from.substring(0, 20),
         message: messageData.text || JSON.stringify(messageData),
         timestamp: Date.now()
       });
-      config.set('messageHistory', history.slice(-100));
-      config.save();
+      context.config.set('messageHistory', history.slice(-100));
+      context.config.save();
 
       console.log('');
-      rl.prompt();
+      context.rl.prompt();
     });
 
     huinet.start().catch(reject);
   });
 
-  // Create REPL
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    prompt: 'HUINET > ',
-    completer: completer
-  });
-
-  // Save references for commands
-  (global as any).__huinet = huinet;
-  (global as any).__repl = rl;
-  (global as any).__config = config;
-
   // Show prompt
-  rl.prompt();
+  context.rl.prompt();
 
   // Listen for user input
-  rl.on('line', async (input) => {
+  context.rl.on('line', async (input) => {
     const cmd = input.trim();
 
     if (cmd) {
       try {
-        await handleCommand(huinet, cmd, config);
+        await handleCommand(context, cmd);
       } catch (error) {
         showMessage('error', `Error: ${(error as Error).message}`);
       }
     }
 
-    rl.prompt();
+    context.rl.prompt();
   });
 
   // Listen for Ctrl+C
-  rl.on('SIGINT', async () => {
+  context.rl.on('SIGINT', async () => {
     console.log('');
     showMessage('info', 'Exiting...');
-    await huinet.stop();
-    rl.close();
+    context.running = false;
+    await context.huinet.stop();
+    context.rl.close();
     process.exit(0);
   });
 
   // Listen for close event
-  rl.on('close', async () => {
-    await huinet.stop();
+  context.rl.on('close', async () => {
+    context.running = false;
+    await context.huinet.stop();
     process.exit(0);
   });
 }

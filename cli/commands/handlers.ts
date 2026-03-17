@@ -130,7 +130,7 @@ export async function sendMessage(
   const message = args.slice(1).join(' ');
 
   // Resolve node ID
-  const nodeID = resolveNodeID(config, alias);
+  const nodeID = resolveNodeID(huinet, config, alias);
   if (!nodeID) {
     showMessage('error', `Node not found: ${alias}`);
     console.log('  Use "ls" to see available nodes');
@@ -275,7 +275,7 @@ export async function disconnectFrom(
   args: string[]
 ): Promise<void> {
   const alias = args[0];
-  const nodeID = resolveNodeID(config, alias);
+  const nodeID = resolveNodeID(huinet, config, alias);
 
   if (!nodeID) {
     showMessage('error', `Node not found: ${alias}`);
@@ -323,7 +323,7 @@ export async function quit(huinet: HuiNet): Promise<void> {
 /**
  * Helper: Resolve node ID from alias
  */
-function resolveNodeID(config: ConfigManager, alias: string): string | null {
+function resolveNodeID(huinet: HuiNet, config: ConfigManager, alias: string): string | null {
   const aliases = config.get('aliases') || {};
 
   // First check alias
@@ -332,13 +332,11 @@ function resolveNodeID(config: ConfigManager, alias: string): string | null {
   }
 
   // Check if it's a partial NodeID
-  const routing = (global as any).__huinet?.getRoutingTable();
-  if (routing) {
-    const knownNodes = routing.getKnownNodes();
-    for (const node of knownNodes) {
-      if (node.nodeID.startsWith(alias)) {
-        return node.nodeID;
-      }
+  const routing = huinet.getRoutingTable();
+  const knownNodes = routing.getKnownNodes();
+  for (const node of knownNodes) {
+    if (node.nodeID.startsWith(alias)) {
+      return node.nodeID;
     }
   }
 

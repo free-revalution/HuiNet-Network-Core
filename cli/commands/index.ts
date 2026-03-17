@@ -7,12 +7,12 @@
 import { HuiNet } from '../../src';
 import { ConfigManager } from '../storage/config';
 import { parseNaturalLanguage } from '../nlp/parser';
+import { REPLContext } from '../context';
 import * as cmd from './handlers';
 
 export async function handleCommand(
-  huinet: HuiNet,
-  input: string,
-  config: ConfigManager
+  context: REPLContext,
+  input: string
 ): Promise<void> {
   if (!input.trim()) {
     return;
@@ -44,45 +44,45 @@ export async function handleCommand(
       break;
 
     case 'status':
-      await cmd.showStatus(huinet, config);
+      await cmd.showStatus(context.huinet, context.config);
       break;
 
     case 'ls':
     case 'list':
-      await cmd.listNodes(huinet, config);
+      await cmd.listNodes(context.huinet, context.config);
       break;
 
     case 'msg':
     case 'send':
-      await cmd.sendMessage(huinet, config, args);
+      await cmd.sendMessage(context.huinet, context.config, args);
       break;
 
     case 'broadcast':
-      await cmd.broadcastMessage(huinet, config, args);
+      await cmd.broadcastMessage(context.huinet, context.config, args);
       break;
 
     case 'alias':
-      cmd.setAlias(config, args);
+      cmd.setAlias(context.config, args);
       break;
 
     case 'connect':
-      await cmd.connectTo(huinet, args);
+      await cmd.connectTo(context.huinet, args);
       break;
 
     case 'disconnect':
-      await cmd.disconnectFrom(huinet, config, args);
+      await cmd.disconnectFrom(context.huinet, context.config, args);
       break;
 
     case 'history':
-      cmd.showHistory(config);
+      cmd.showHistory(context.config);
       break;
 
     case 'fullnodeid':
-      cmd.showFullNodeID(huinet);
+      cmd.showFullNodeID(context.huinet);
       break;
 
     case 'aliases':
-      cmd.listAliases(config);
+      cmd.listAliases(context.config);
       break;
 
     case 'clear':
@@ -90,12 +90,12 @@ export async function handleCommand(
       const { clearScreen } = require('../ui/display');
       const { showWelcome } = require('../ui/display');
       clearScreen();
-      showWelcome(huinet, config.get('name') || 'MyAgent');
+      showWelcome(context.huinet, context.config.get('name') || 'MyAgent');
       break;
 
     case 'quit':
     case 'exit':
-      await cmd.quit(huinet);
+      await cmd.quit(context.huinet);
       break;
 
     default:
