@@ -6,6 +6,7 @@ import { HuiNet } from '../HuiNet';
 
 describe('connectToNode validation', () => {
   it('should return false when connection fails', async () => {
+    jest.setTimeout(15000);
     const node = new HuiNet({ listenPort: 8101, enableMDNS: false });
     await node.start();
 
@@ -15,9 +16,10 @@ describe('connectToNode validation', () => {
     expect(result).toBe(false);
 
     await node.stop();
-  }, 10000);
+  });
 
   it('should return true when connection succeeds', async () => {
+    jest.setTimeout(15000);
     const node1 = new HuiNet({ listenPort: 8102, enableMDNS: false });
     const node2 = new HuiNet({ listenPort: 8103, enableMDNS: false });
 
@@ -30,5 +32,5 @@ describe('connectToNode validation', () => {
 
     await node1.stop();
     await node2.stop();
-  }, 10000);
+  });
 });

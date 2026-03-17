@@ -7,6 +7,7 @@ import { MDiscoveryService } from './discovery/mdns';
 import { TCPServer } from './transport/server';
 import { TCPClient } from './transport/client';
 
+// HuiNet 配置接口
 export interface HuiNetConfig {
   keyPair?: KeyPair;
   listenPort?: number;
@@ -17,6 +18,7 @@ export interface HuiNetConfig {
   enableMDNS?: boolean;
 }
 
+// HuiNet 主类
 export class HuiNet extends EventEmitter {
   private config: Required<HuiNetConfig>;
   private keyPair: KeyPair;
@@ -36,8 +38,8 @@ export class HuiNet extends EventEmitter {
 
     this.config = {
       keyPair: this.keyPair,
-      listenPort: config.listenPort ?? 8000,
-      listenHost: config.listenHost || '0.0.0.0',
+      listenPort: config.listenPort ?? 8000, // 默认监听端口 8000
+      listenHost: config.listenHost || '0.0.0.0', // 默认监听所有接口
       bootstrapNodes: config.bootstrapNodes || [],
       maxCoreConnections: config.maxCoreConnections || 10,
       maxActiveConnections: config.maxActiveConnections || 50,
