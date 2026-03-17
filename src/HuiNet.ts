@@ -187,10 +187,15 @@ export class HuiNet extends EventEmitter {
         throw new Error(`Failed to connect to ${targetNodeID}`);
       }
       client = this.clients.get(clientKey);
+
+      // Verify client exists after reconnection
+      if (!client) {
+        throw new Error(`Client not found after reconnection to ${targetNodeID}`);
+      }
     }
 
     // Send message
-    client!.send(Buffer.from(messageData));
+    client.send(Buffer.from(messageData));
   }
 
   async connectToNode(host: string, port: number, nodeID?: string): Promise<boolean> {
