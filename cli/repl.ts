@@ -8,6 +8,7 @@ import readline from 'readline';
 import { HuiNet } from '../src';
 import { ConfigManager } from './storage/config';
 import { showWelcome, showMessage, clearScreen } from './ui/display';
+import { setupHuiNetEventHandlers } from './ui/event-handlers';
 import { handleCommand } from './commands';
 import { createREPLContext, REPLContext } from './context';
 
@@ -70,70 +71,10 @@ export async function startREPL(options: REPLOptions): Promise<void> {
         context.welcomeShown = true;
       }
 
+      // Setup event handlers after ready
+      setupHuiNetEventHandlers(huinet, config, rl);
+
       resolve();
-    });
-
-    // Handle discovered nodes
-    huinet.on('nodeDiscovered', (node: any) => {
-      console.log('');
-      showMessage('info', `Discovered node: ${node.nodeId?.substring(0, 20)}...`);
-      console.log(`  Address: ${node.address}`);
-      console.log('');
-      context.rl.prompt();
-    });
-
-    // Handle peer connections
-    huinet.on('peerConnected', (nodeID: string) => {
-      console.log('');
-      showMessage('success', `Connected to: ${nodeID.substring(0, 20)}...`);
-
-      // Save to routing table
-      const routing = huinet.getRoutingTable();
-      const aliases = context.config.get('aliases') || {};
-
-      // Show alias if available
-      const alias = Object.keys(aliases).find(key => aliases[key] === nodeID);
-      if (alias) {
-        console.log(`  Alias: ${alias}`);
-      }
-      console.log('');
-      context.rl.prompt();
-    });
-
-    // Handle peer disconnections
-    huinet.on('peerDisconnected', (nodeID: string) => {
-      console.log('');
-      showMessage('warning', `Disconnected from: ${nodeID.substring(0, 20)}...`);
-      console.log('');
-      context.rl.prompt();
-    });
-
-    // Handle received messages
-    huinet.on('message', (from: string, data: any) => {
-      console.log('');
-      showMessage('info', `Message received from ${from.substring(0, 20)}...`);
-
-      // The message is wrapped in an envelope: { from, to, timestamp, data: { type, text } }
-      const messageData = data.data || data;
-      if (messageData.text) {
-        console.log(`  ${messageData.text}`);
-      } else {
-        console.log(`  ${JSON.stringify(messageData, null, 2)}`);
-      }
-
-      // Add to history
-      const history = context.config.get('messageHistory') || [];
-      history.push({
-        direction: 'received',
-        target: from.substring(0, 20),
-        message: messageData.text || JSON.stringify(messageData),
-        timestamp: Date.now()
-      });
-      context.config.set('messageHistory', history.slice(-100));
-      context.config.save();
-
-      console.log('');
-      context.rl.prompt();
     });
 
     huinet.start().catch(reject);
