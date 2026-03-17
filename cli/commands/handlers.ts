@@ -240,9 +240,30 @@ export async function connectTo(huinet: HuiNet, args: string[]): Promise<void> {
   }
 
   const address = args[0];
+  const [host, portStr] = address.split(':');
+  const port = parseInt(portStr, 10);
+
+  if (!host || isNaN(port)) {
+    showMessage('error', 'Invalid address format');
+    console.log('  Usage: connect <host:port>');
+    console.log('  Example: connect 192.168.1.100:8000');
+    return;
+  }
+
   console.log('');
   showMessage('info', `Connecting to ${address}...`);
-  showMessage('warning', 'This feature requires extending HuiNet implementation');
+
+  try {
+    const success = await (huinet as any).connectToNode(host, port);
+
+    if (success) {
+      showMessage('success', `Connected to ${address}`);
+    } else {
+      showMessage('error', `Failed to connect to ${address}`);
+    }
+  } catch (error) {
+    showMessage('error', `Connection error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 /**
