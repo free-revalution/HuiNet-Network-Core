@@ -79,7 +79,9 @@ export async function listNodes(huinet: HuiNet, config: ConfigManager): Promise<
 
       console.log(`  ${index++}. ${emoji} ${alias}`);
       console.log(`      Status: ${status}`);
-      console.log(`      Address: ${node.addresses[0] || 'N/A'}`);
+      const address = node.addresses[0];
+      const addressStr = address ? `${address.host}:${address.port}` : 'N/A';
+      console.log(`      Address: ${addressStr}`);
       console.log(`      NodeID: ${node.nodeID.substring(0, 30)}...`);
       console.log('');
     }
@@ -191,7 +193,9 @@ export async function broadcastMessage(
       });
       successCount++;
     } catch (error) {
-      console.log(`  ❌ Failed to send to ${node.addresses[0]}`);
+      const address = node.addresses[0];
+      const addressStr = address ? `${address.host}:${address.port}` : 'N/A';
+      console.log(`  ❌ Failed to send to ${addressStr}`);
     }
   }
 
