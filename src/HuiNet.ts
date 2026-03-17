@@ -164,37 +164,36 @@ export class HuiNet extends EventEmitter {
       data: message
     });
 
-    // Find the node in routing table
+    // Find node
     const knownNode = this.routingTable.getKnownNode(targetNodeID);
-    if (knownNode && knownNode.addresses.length > 0) {
-      const address = knownNode.addresses[0];
-      const host = address.host;
-      const port = address.port;
 
-      // Get or create client
-      const clientKey = `${host}:${port}`;
-      let client = this.clients.get(clientKey);
+    if (!knownNode || knownNode.addresses.length === 0) {
+      throw new Error(`Unknown node: ${targetNodeID}`);
+    }
 
-      if (!client || !client.isConnected()) {
-        client = new TCPClient({ nodeId: this.nodeID });
-        this.clients.set(clientKey, client);
+    const address = knownNode.addresses[0];
+    const host = address.host;
+    const port = address.port;
+    const clientKey = `${host}:${port}`;
 
-        client.on('message', ({ message: msg }) => {
-          try {
-            const data = JSON.parse(msg);
-            this.emit('message', targetNodeID, data);
-          } catch {
-            // Silently handle parse errors
-          }
-        });
+    // Get or create client
+    let client = this.clients.get(clientKey);
 
-        await client.connect(host, port);
+    // Check connection state, reconnect if disconnected
+    if (!client || !client.isConnected()) {
+      // Attempt reconnection
+      const reconnected = await this.connectToNode(host, port, targetNodeID);
+      if (!reconnected) {
+        throw new Error(`Failed to connect to ${targetNodeID}`);
       }
+      client = this.clients.get(clientKey);
+    }
 
-      // Send message
+    // Send message
+    if (client && client.isConnected()) {
       client.send(Buffer.from(messageData));
     } else {
-      throw new Error(`Unknown node: ${targetNodeID}`);
+      throw new Error(`Not connected to ${targetNodeID}`);
     }
   }
 
