@@ -114,13 +114,18 @@ export function listAliases(config: ConfigManager): void {
 
 /**
  * Send message - pure business logic
- * @throws Error if node not found or send fails
+ * @throws Error if validation fails, node not found, or send fails
  */
 export async function sendMessage(
   huinet: HuiNet,
   config: ConfigManager,
   args: string[]
 ): Promise<void> {
+  // Validation
+  if (args.length < 2) {
+    throw new Error('Usage: msg <name> <message>');
+  }
+
   const alias = args[0];
   const message = args.slice(1).join(' ');
 
@@ -214,16 +219,27 @@ export function setAlias(config: ConfigManager, args: string[]): void {
 
 /**
  * Manual connect - pure business logic
- * @throws Error if address format is invalid
+ * @throws Error if validation fails or address format is invalid
  * @returns true if connection initiated successfully, false otherwise
  */
 export async function connectTo(huinet: HuiNet, args: string[]): Promise<boolean> {
-  const address = args[0];
-  const [host, portStr] = address.split(':');
-  const port = parseInt(portStr, 10);
+  // Validation
+  if (args.length === 0) {
+    throw new Error('Usage: connect <address>');
+  }
 
-  if (!host || isNaN(port)) {
-    throw new Error('Invalid address format');
+  const address = args[0];
+  const parts = address.split(':');
+
+  if (parts.length !== 2) {
+    throw new Error('Invalid address format. Use host:port');
+  }
+
+  const host = parts[0];
+  const port = parseInt(parts[1], 10);
+
+  if (isNaN(port) || port < 1 || port > 65535) {
+    throw new Error('Invalid port number');
   }
 
   return await huinet.connectToNode(host, port);

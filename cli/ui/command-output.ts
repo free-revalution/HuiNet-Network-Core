@@ -24,12 +24,6 @@ export async function displayNodeList(context: REPLContext): Promise<void> {
 }
 
 export async function displaySendMessage(context: REPLContext, args: string[]): Promise<void> {
-  if (args.length < 2) {
-    showCommandError('Usage: msg <name> <message>');
-    console.log('  Example: msg Alice Hello');
-    return;
-  }
-
   console.log('');
   showMessage('info', `Sending message to ${args[0]}...`);
 
@@ -38,44 +32,22 @@ export async function displaySendMessage(context: REPLContext, args: string[]): 
     showMessage('success', 'Message sent!');
     console.log('');
   } catch (error) {
-    showCommandError(`Send failed: ${(error as Error).message}`);
+    showCommandError((error as Error).message);
   }
 }
 
 export async function displayConnect(context: REPLContext, args: string[]): Promise<void> {
-  if (args.length === 0) {
-    showCommandError('Usage: connect <address>');
-    console.log('  Example: connect 127.0.0.1:8002');
-    return;
-  }
-
-  const address = args[0];
-  const parts = address.split(':');
-
-  if (parts.length !== 2) {
-    showCommandError('Invalid address format. Use host:port');
-    return;
-  }
-
-  const host = parts[0];
-  const port = parseInt(parts[1], 10);
-
-  if (isNaN(port) || port < 1 || port > 65535) {
-    showCommandError('Invalid port number');
-    return;
-  }
-
   console.log('');
-  showMessage('info', `Connecting to ${address}...`);
+  showMessage('info', `Connecting to ${args[0]}...`);
 
   try {
-    const success = await context.huinet.connectToNode(host, port);
+    const success = await handlers.connectTo(context.huinet, args);
     if (!success) {
-      showCommandError(`Failed to connect to ${address}`);
+      showCommandError(`Failed to connect to ${args[0]}`);
     }
     // Success message shown by peerConnected event
   } catch (error) {
-    showCommandError(`Connection error: ${(error as Error).message}`);
+    showCommandError((error as Error).message);
   }
 }
 
