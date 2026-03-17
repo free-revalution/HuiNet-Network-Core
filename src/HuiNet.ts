@@ -190,11 +190,7 @@ export class HuiNet extends EventEmitter {
     }
 
     // Send message
-    if (client && client.isConnected()) {
-      client.send(Buffer.from(messageData));
-    } else {
-      throw new Error(`Not connected to ${targetNodeID}`);
-    }
+    client!.send(Buffer.from(messageData));
   }
 
   async connectToNode(host: string, port: number, nodeID?: string): Promise<boolean> {
