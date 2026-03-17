@@ -73,7 +73,11 @@ export class MDiscoveryService extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       try {
-        this.socket = dgram.createSocket('udp4');
+        // Create socket with reuseAddr option to allow multiple nodes
+        this.socket = dgram.createSocket({
+          type: 'udp4',
+          reuseAddr: true
+        });
 
         // Set up message handler
         this.messageHandler = (msg: Buffer, rinfo: dgram.RemoteInfo) => {

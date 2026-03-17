@@ -20,12 +20,15 @@ program
 // Start interactive REPL (default command)
 program
   .argument('[name]', 'Agent name', 'MyAgent')
+  .option('-n, --name <name>', 'Agent name')
   .option('-p, --port <number>', 'Listen port', '8000')
   .option('-h, --host <address>', 'Listen address', '0.0.0.0')
   .option('--no-mdns', 'Disable mDNS discovery')
   .option('-b, --bootstrap <addresses...>', 'Bootstrap node addresses')
-  .action(async (name, options) => {
+  .action(async (positionalName, options) => {
     try {
+      // Use --name option if provided, otherwise use positional argument
+      const name = options.name || positionalName;
       await startREPL({
         name,
         port: parseInt(options.port),

@@ -27,7 +27,8 @@
     "lint": "eslint src cli --ext .ts",
     "prepublishOnly": "npm run build && npm test",
     "start": "node dist/cli/index.js",
-    "dev": "ts-node cli/index.ts"
+    "dev": "ts-node cli/index.ts",
+    "cli": "ts-node cli/index.ts"
   },
   "keywords": [
     "p2p",

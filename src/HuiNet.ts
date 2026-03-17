@@ -202,9 +202,26 @@ export class HuiNet extends EventEmitter {
     const client = new TCPClient({ nodeId: this.nodeID });
     const clientKey = `${host}:${port}`;
 
-    // Add error handler to prevent unhandled errors
+    // 使用 clientKey 作为临时 nodeID（如果没有提供）
+    const effectiveNodeID = nodeID || clientKey;
+
+    // Set up event handlers FIRST to prevent race condition
     client.on('error', () => {
       // Error will be caught by the promise rejection
+    });
+
+    client.on('disconnected', () => {
+      this.emit('peerDisconnected', effectiveNodeID);
+      this.clients.delete(clientKey);
+    });
+
+    client.on('message', ({ message }) => {
+      try {
+        const data = JSON.parse(message);
+        this.emit('message', effectiveNodeID, data);
+      } catch {
+        // Ignore parse errors
+      }
     });
 
     try {
@@ -220,9 +237,6 @@ export class HuiNet extends EventEmitter {
       if (!client.isConnected()) {
         return false;
       }
-
-      // 使用 clientKey 作为临时 nodeID（如果没有提供）
-      const effectiveNodeID = nodeID || clientKey;
 
       // 连接成功，添加到路由表
       this.routingTable.addKnownNode({
@@ -243,21 +257,6 @@ export class HuiNet extends EventEmitter {
         state: NodeState.ONLINE,
         lastSeen: Date.now(),
         connectionCount: 1,
-      });
-
-      // 设置事件监听
-      client.on('disconnected', () => {
-        this.emit('peerDisconnected', effectiveNodeID);
-        this.clients.delete(clientKey);
-      });
-
-      client.on('message', ({ message }) => {
-        try {
-          const data = JSON.parse(message);
-          this.emit('message', effectiveNodeID, data);
-        } catch {
-          // 忽略解析错误
-        }
       });
 
       this.clients.set(clientKey, client);

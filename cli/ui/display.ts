@@ -52,6 +52,22 @@ function fitWidth(text: string, width: number): string {
 }
 
 /**
+ * Center text within width
+ */
+function centerText(text: string, width: number): string {
+  // Remove ANSI codes for length calculation
+  const cleanText = text.replace(/\x1b\[[0-9;]*m/g, '');
+  const padding = width - cleanText.length;
+
+  if (padding > 0) {
+    const leftPad = Math.floor(padding / 2);
+    const rightPad = padding - leftPad;
+    return ' '.repeat(leftPad) + text + ' '.repeat(rightPad);
+  }
+  return text;
+}
+
+/**
  * Wrap text to fit width
  */
 function wrapText(text: string, maxWidth: number): string[] {
@@ -131,10 +147,10 @@ export function showWelcome(huinet: any, name: string): void {
   console.log('');
   console.log(Colors.cyan + Box.topLeft + Box.horizontal.repeat(titleWidth) + Box.topRight + Colors.reset);
   for (const line of logo) {
-    console.log(Colors.cyan + Box.vertical + Colors.reset + fitWidth(line, titleWidth) + Colors.cyan + Box.vertical + Colors.reset);
+    console.log(Colors.cyan + Box.vertical + Colors.reset + centerText(line, titleWidth) + Colors.cyan + Box.vertical + Colors.reset);
   }
-  console.log(Colors.cyan + Box.vertical + Colors.reset + fitWidth(`${Colors.bright}HuiNet v1.0.0 - P2P Agent Networking${Colors.reset}`, titleWidth) + Colors.cyan + Box.vertical + Colors.reset);
-  console.log(Colors.cyan + Box.bottomLeft + Box.horizontal.repeat(titleWidth) + Box.topRight + Colors.reset);
+  console.log(Colors.cyan + Box.vertical + Colors.reset + centerText(`${Colors.bright}HuiNet v1.0.0 - P2P Agent Networking${Colors.reset}`, titleWidth) + Colors.cyan + Box.vertical + Colors.reset);
+  console.log(Colors.cyan + Box.bottomLeft + Box.horizontal.repeat(titleWidth) + Box.bottomRight + Colors.reset);
 
   // Info box
   const nodeID = huinet.getNodeID();
@@ -146,7 +162,10 @@ export function showWelcome(huinet: any, name: string): void {
     `${Colors.bright}Status:${Colors.reset} ${Colors.green}● Ready${Colors.reset}`,
   ];
 
-  const infoBox = drawBox(infoLines, Math.min(50, width));
+  // Use consistent width for all boxes (80% of terminal width, max 70 chars)
+  const boxWidth = Math.min(70, Math.floor(width * 0.8));
+
+  const infoBox = drawBox(infoLines, boxWidth);
 
   console.log('');
   for (const line of infoBox) {
@@ -163,7 +182,7 @@ export function showWelcome(huinet: any, name: string): void {
     `  • Type ${Colors.yellow}"quit"${Colors.reset} to exit`,
   ];
 
-  const tipsBox = drawBox(tips, Math.min(60, width));
+  const tipsBox = drawBox(tips, boxWidth);
 
   console.log('');
   for (const line of tipsBox) {

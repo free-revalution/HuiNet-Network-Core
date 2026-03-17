@@ -254,7 +254,7 @@ export async function connectTo(huinet: HuiNet, args: string[]): Promise<void> {
   showMessage('info', `Connecting to ${address}...`);
 
   try {
-    const success = await (huinet as any).connectToNode(host, port);
+    const success = await huinet.connectToNode(host, port);
 
     if (success) {
       showMessage('success', `Connected to ${address}`);

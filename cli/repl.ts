@@ -7,7 +7,7 @@
 import readline from 'readline';
 import { HuiNet } from '../src';
 import { ConfigManager } from './storage/config';
-import { showWelcome, showMessage } from './ui/display';
+import { showWelcome, showMessage, clearScreen } from './ui/display';
 import { handleCommand } from './commands';
 
 export interface REPLOptions {
@@ -53,23 +53,67 @@ export async function startREPL(options: REPLOptions): Promise<void> {
       resolve();
     });
 
+    // Handle discovered nodes
     huinet.on('nodeDiscovered', (node: any) => {
       console.log('');
       showMessage('info', `Discovered node: ${node.nodeId?.substring(0, 20)}...`);
       console.log(`  Address: ${node.address}`);
       console.log('');
+      rl.prompt();
     });
 
+    // Handle peer connections
     huinet.on('peerConnected', (nodeID: string) => {
       console.log('');
       showMessage('success', `Connected to: ${nodeID.substring(0, 20)}...`);
+
+      // Save to routing table
+      const routing = huinet.getRoutingTable();
+      const aliases = config.get('aliases') || {};
+
+      // Show alias if available
+      const alias = Object.keys(aliases).find(key => aliases[key] === nodeID);
+      if (alias) {
+        console.log(`  Alias: ${alias}`);
+      }
       console.log('');
+      rl.prompt();
     });
 
+    // Handle peer disconnections
     huinet.on('peerDisconnected', (nodeID: string) => {
       console.log('');
       showMessage('warning', `Disconnected from: ${nodeID.substring(0, 20)}...`);
       console.log('');
+      rl.prompt();
+    });
+
+    // Handle received messages
+    huinet.on('message', (from: string, data: any) => {
+      console.log('');
+      showMessage('info', `Message received from ${from.substring(0, 20)}...`);
+
+      // The message is wrapped in an envelope: { from, to, timestamp, data: { type, text } }
+      const messageData = data.data || data;
+      if (messageData.text) {
+        console.log(`  ${messageData.text}`);
+      } else {
+        console.log(`  ${JSON.stringify(messageData, null, 2)}`);
+      }
+
+      // Add to history
+      const history = config.get('messageHistory') || [];
+      history.push({
+        direction: 'received',
+        target: from.substring(0, 20),
+        message: messageData.text || JSON.stringify(messageData),
+        timestamp: Date.now()
+      });
+      config.set('messageHistory', history.slice(-100));
+      config.save();
+
+      console.log('');
+      rl.prompt();
     });
 
     huinet.start().catch(reject);
@@ -89,6 +133,7 @@ export async function startREPL(options: REPLOptions): Promise<void> {
   // Save references for commands
   (global as any).__huinet = huinet;
   (global as any).__repl = rl;
+  (global as any).__config = config;
 
   // Show prompt
   rl.prompt();
