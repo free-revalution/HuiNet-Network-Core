@@ -19,7 +19,7 @@
     "cli"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/build.js",
     "build:cli": "tsc",
     "test": "jest",
     "test:watch": "jest --watch",
