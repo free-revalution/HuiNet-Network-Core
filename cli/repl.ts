@@ -41,6 +41,9 @@ export async function startREPL(options: REPLOptions): Promise<void> {
     bootstrapNodes: options.bootstrap,
   });
 
+  // Flag to prevent duplicate welcome screen display
+  let welcomeShown = false;
+
   // Wait for node to be ready
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -50,6 +53,13 @@ export async function startREPL(options: REPLOptions): Promise<void> {
     huinet.on('ready', () => {
       clearTimeout(timeout);
       showMessage('success', 'HuiNet is ready!');
+
+      // Show welcome screen only once
+      if (!welcomeShown) {
+        showWelcome(huinet, options.name);
+        welcomeShown = true;
+      }
+
       resolve();
     });
 
@@ -118,9 +128,6 @@ export async function startREPL(options: REPLOptions): Promise<void> {
 
     huinet.start().catch(reject);
   });
-
-  // Show welcome screen
-  showWelcome(huinet, options.name);
 
   // Create REPL
   const rl = readline.createInterface({
