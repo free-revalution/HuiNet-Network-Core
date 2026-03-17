@@ -67,7 +67,7 @@ describe('MDiscoveryService', () => {
     it('should start the discovery service', async () => {
       await service.start();
 
-      expect(dgram.createSocket).toHaveBeenCalledWith('udp4');
+      expect(dgram.createSocket).toHaveBeenCalledWith({ type: 'udp4', reuseAddr: true });
       expect(mockSocket.bind).toHaveBeenCalledWith(
         43000,
         '0.0.0.0',

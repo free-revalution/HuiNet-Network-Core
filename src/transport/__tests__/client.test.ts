@@ -14,6 +14,10 @@ describe('TCPClient', () => {
         // Echo back the data
         socket.write(data);
       });
+      // Handle socket errors gracefully
+      socket.on('error', () => {
+        // Ignore socket errors in tests
+      });
     });
 
     testServer.listen(0, () => {
@@ -24,7 +28,10 @@ describe('TCPClient', () => {
   });
 
   afterAll((done) => {
-    testServer.close(done);
+    testServer.close(() => {
+      // Give time for sockets to fully close
+      setTimeout(done, 100);
+    });
   });
 
   beforeEach(() => {

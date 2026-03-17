@@ -36,7 +36,7 @@ export class HuiNet extends EventEmitter {
 
     this.config = {
       keyPair: this.keyPair,
-      listenPort: config.listenPort || 8000,
+      listenPort: config.listenPort ?? 8000,
       listenHost: config.listenHost || '0.0.0.0',
       bootstrapNodes: config.bootstrapNodes || [],
       maxCoreConnections: config.maxCoreConnections || 10,
