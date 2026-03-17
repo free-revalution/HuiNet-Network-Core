@@ -15,7 +15,7 @@
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
   [![Node Version](https://img.shields.io/badge/node-%3E=16.0.0-green)](https://nodejs.org/)
 
-  [Install](#installation) • [Quick Start](#quick-start) • [Commands](#commands) • [Examples](#examples)
+  [Install](#installation) • [Quick Start](#quick-start) • [Agent Integration](#agent-integration) • [CLI](#cli-commands)
 
 </div>
 
@@ -23,11 +23,25 @@
 
 ## HuiNet
 
-**HuiNet** is a decentralized P2P networking tool for Agent-to-Agent communication. Connect devices across networks with automatic discovery and encrypted messaging.
+**HuiNet** is a decentralized P2P networking library for Agent-to-Agent (A2A) communication. It enables AI agents to discover each other and communicate directly across networks with automatic discovery and encrypted messaging.
+
+## Features
+
+- **Auto Discovery**: Automatically finds other HuiNet nodes via mDNS
+- **P2P Communication**: Direct agent-to-agent messaging without central servers
+- **Encrypted**: Ed25519 public-key cryptography for secure communication
+- **Cross-Network**: Works across different networks with bootstrap nodes
+- **Agent Integration**: Proxy server for easy integration with Claude Code, CodeX, OpenClaw, etc.
 
 ## Installation
 
-### Clone and Install (Recommended)
+### As a Library
+
+```bash
+npm install @huinet/network
+```
+
+### CLI Tool
 
 ```bash
 # Clone repository
@@ -40,80 +54,94 @@ npm install
 # Build project
 npm run build
 
-# Run HuiNet
-npm start
-
-# Optional: Create global link to run from anywhere
+# Optional: Create global link
 npm link
-# Then you can run: huinet
-```
-
-### Quick Start
-
-After installation, from the project directory:
-
-```bash
-npm start
-```
-
-Or if you created a global link:
-
-```bash
-huinet
 ```
 
 ## Quick Start
 
-### Start HuiNet
+### Using the CLI
 
 ```bash
+# Start HuiNet
 huinet
+
+# You'll see the welcome screen with your NodeID
+huinet > ls              # List discovered nodes
+huinet > msg Alice Hi!   # Send a message
 ```
 
-You'll see the welcome screen:
+### Using the SDK
 
-```
-╔════════════════════════════════════════════════════════════╗
-║                    🌐 HuiNet v1.0.0                       ║
-╠════════════════════════════════════════════════════════════╣
-║  Name: MyAgent                                             ║
-║  NodeID: 5HueCGue8dnF7iSBz5sYjXx...                       ║
-║  Status: ● Ready                                          ║
-╠════════════════════════════════════════════════════════════╣
-║  💡 Tips:                                                 ║
-║    - Type "help" to see all commands                       ║
-║    - Type "ls" to see discovered nodes                     ║
-║    - Type "quit" to exit                                   ║
-║    - Try natural language: "send hello to Alice"          ║
-╚════════════════════════════════════════════════════════════╝
+```typescript
+import { HuiNet } from '@huinet/network';
 
-huinet >
-```
+const huinet = new HuiNet({
+  listenPort: 8000,
+  enableMDNS: true
+});
 
-### Connect Two Devices
+await huinet.start();
 
-**Device A:**
-```bash
-huinet "Computer A"
-huinet > ls
+// Send message to another node
+await huinet.send(targetNodeID, { data: 'Hello World' });
+
+// Listen for incoming messages
+huinet.on('message', (fromNodeID, message) => {
+  console.log(`Received from ${fromNodeID}:`, message);
+});
 ```
 
-**Device B:**
-```bash
-huinet "Computer B"
-huinet > ls
+## Agent Integration
+
+### HuiNet Proxy Server (Coming Soon)
+
+The proxy server enables existing AI agents to communicate via the HuiNet P2P network without code modifications.
+
+**Architecture:**
+```
+┌─────────────────┐         ┌─────────────────┐
+│   Claude Code   │         │     CodeX       │
+│                 │         │                 │
+└────────┬────────┘         └────────┬────────┘
+         │                          │
+    HTTP/WebSocket              HTTP/WebSocket
+         │                          │
+┌────────▼────────┐         ┌───────▼──────────┐
+│  HuiNet Proxy   │         │  HuiNet Proxy    │
+│   (Agent A)     │◄───────►│   (Agent B)     │
+└────────┬────────┘         └─────────────────┘
+         │
+      P2P Network
 ```
 
-Both devices will automatically discover each other on the same network!
+**API Preview:**
+```typescript
+// Start proxy server
+import { HuiNetProxy } from '@huinet/proxy';
 
-### Send Messages
+const proxy = new HuiNetProxy({
+  apiKey: process.env.HUINET_API_KEY,
+  httpPort: 3000,
+  wsPort: 3001
+});
+await proxy.start();
 
-```bash
-huinet > msg Computer B Hello!
-huinet > send a message to Computer B saying How are you?
+// Agent sends message via HTTP
+POST /api/send
+Headers: X-API-Key: xxx
+Body: { "to": "targetNodeID", "data": { "message": "Hello" } }
+
+// Agent receives via WebSocket
+ws://localhost:3001?apiKey=xxx
+// Message push: { "type": "message", "from": "nodeID", "data": {...} }
 ```
 
-## Commands
+**Status:** 🚧 Under Development
+
+See [`specs/proxy-server-design.md`](specs/proxy-server-design.md) for the complete design document.
+
+## CLI Commands
 
 ### Basic Commands
 
@@ -176,33 +204,6 @@ huinet --no-mdns --bootstrap "server.com:9000"
 huinet --host 192.168.1.100
 ```
 
-## How It Works
-
-```
-┌─────────────────┐         ┌─────────────────┐
-│   Computer A     │         │   Computer B     │
-│   192.168.1.100  │         │   192.168.1.101  │
-│   Port: 8000     │ <──────> │   Port: 8000     │
-│   mDNS: ON       │   WiFi   │   mDNS: ON       │
-└─────────────────┘         └─────────────────┘
-        │                           │
-        └─────── Auto Discovery ─────┘
-```
-
-### Features
-
-- **Auto Discovery**: Automatically finds other HuiNet nodes on your network
-- **Encrypted**: Ed25519 public-key cryptography
-- **Simple**: No coding required, just type commands
-- **Cross-Network**: Works across different networks with bootstrap nodes
-
-## Use Cases
-
-- **Home Automation**: Connect smart devices across your home network
-- **Team Chat**: Create a private P2P chat network
-- **File Sharing**: Share files directly between devices
-- **IoT Coordination**: Coordinate IoT devices without a server
-
 ## Configuration
 
 Configuration is stored in `~/.huinet/config.json`:
@@ -215,23 +216,6 @@ Configuration is stored in `~/.huinet/config.json`:
   },
   "messageHistory": [...]
 }
-```
-
-## Troubleshooting
-
-**Q: Nodes not discovering each other?**
-- Check both devices are on the same network
-- Ensure firewall allows port 8000
-- Verify mDNS is enabled (default)
-
-**Q: Port already in use?**
-```bash
-huinet --port 8001
-```
-
-**Q: How to reset configuration?**
-```bash
-huinet reset --force
 ```
 
 ## Architecture
@@ -267,6 +251,37 @@ npm run build
 
 # Run in development mode
 npm run dev
+```
+
+## Documentation
+
+- [API Reference](docs/api-reference.md) - Complete SDK API documentation
+- [Agent Integration Guide](docs/agent-integration.md) - How to integrate HuiNet into your agent
+- [Proxy Server Design](specs/proxy-server-design.md) - Proxy server architecture and implementation plan
+- [Contributing Guidelines](CONTRIBUTING.md)
+
+## Use Cases
+
+- **Multi-Agent Systems**: Coordinate multiple AI agents across different machines
+- **Home Automation**: Connect smart devices across your home network
+- **Team Chat**: Create a private P2P chat network
+- **Distributed Computing**: Coordinate tasks across distributed agents
+
+## Troubleshooting
+
+**Q: Nodes not discovering each other?**
+- Check both devices are on the same network
+- Ensure firewall allows port 8000
+- Verify mDNS is enabled (default)
+
+**Q: Port already in use?**
+```bash
+huinet --port 8001
+```
+
+**Q: How to reset configuration?**
+```bash
+huinet reset --force
 ```
 
 ## Contributing

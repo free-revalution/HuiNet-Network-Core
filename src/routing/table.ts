@@ -1,6 +1,7 @@
 import { NodeID } from '../types/node';
 import { TransportAddress, NodeState } from '../types/connection';
 
+// 路由表节点信息
 export interface NodeInfo {
   nodeID: NodeID;
   addresses: TransportAddress[];
@@ -199,5 +200,25 @@ export class RoutingTable {
     }
 
     return cleaned;
+  }
+
+  // Update node state
+  updateNodeState(nodeID: NodeID, state: NodeState): boolean {
+    const node = this.getAnyNode(nodeID);
+    if (!node) return false;
+
+    node.state = state;
+    node.lastSeen = Date.now();
+
+    // Update in the appropriate map
+    if (this.coreNodes.has(nodeID)) {
+      this.coreNodes.set(nodeID, node);
+    } else if (this.activeNodes.has(nodeID)) {
+      this.activeNodes.set(nodeID, node);
+    } else {
+      this.knownNodes.set(nodeID, node);
+    }
+
+    return true;
   }
 }

@@ -1,9 +1,11 @@
-import { BaseMessage, MessageHeader } from '../types/message';
+import { BaseMessage, MessageHeader, MessageType } from '../types/message';
+import { NodeID } from '../types/node';
 
 // Message format:
 // [header_len:varint][header_json][body_len:varint][body][signature_len:varint][signature]
 
 const MAX_MESSAGE_SIZE = 10 * 1024 * 1024; // 10MB
+const PROTOCOL_VERSION = '1.0.0';
 
 export function encodeMessage(message: BaseMessage): Buffer {
   // CRITICAL: Input validation
@@ -88,6 +90,155 @@ export function decodeMessage(buffer: Buffer): BaseMessage {
   const signature = buffer.subarray(offset, offset + sigLen.value);
 
   return { header, body, signature };
+}
+
+/**
+ * Generate a unique message ID
+ */
+export function generateMessageID(): string {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 15);
+  return `${timestamp}-${random}`;
+}
+
+/**
+ * Create a message header
+ */
+export function createMessageHeader(
+  from: NodeID,
+  type: MessageType,
+  to?: NodeID,
+  sequence?: number
+): MessageHeader {
+  return {
+    version: PROTOCOL_VERSION,
+    type,
+    from,
+    to,
+    id: generateMessageID(),
+    timestamp: Date.now(),
+    sequence,
+  };
+}
+
+/**
+ * Create a handshake message
+ */
+export function createHandshakeMessage(
+  from: NodeID,
+  publicKey: Buffer,
+  challenge: Buffer,
+  signature: Buffer
+): BaseMessage {
+  const header = createMessageHeader(from, MessageType.HANDSHAKE);
+
+  return {
+    header,
+    body: Buffer.from(JSON.stringify({
+      nodeID: from,
+      publicKey: publicKey.toString('base64'),
+      challenge: challenge.toString('base64'),
+      capabilities: ['tcp', 'json'],
+      version: PROTOCOL_VERSION,
+    })),
+    signature,
+  };
+}
+
+/**
+ * Create a handshake acknowledgment message
+ */
+export function createHandshakeAckMessage(
+  from: NodeID,
+  originalChallenge: Buffer,
+  publicKey: Buffer,
+  signature: Buffer
+): BaseMessage {
+  const header = createMessageHeader(from, MessageType.HANDSHAKE_ACK);
+
+  return {
+    header,
+    body: Buffer.from(JSON.stringify({
+      nodeID: from,
+      challengeResponse: originalChallenge.toString('base64'),
+      publicKey: publicKey.toString('base64'),
+      capabilities: ['tcp', 'json'],
+      version: PROTOCOL_VERSION,
+    })),
+    signature,
+  };
+}
+
+/**
+ * Create a heartbeat message
+ */
+export function createHeartbeatMessage(
+  from: NodeID,
+  sequence: number,
+  signature: Buffer
+): BaseMessage {
+  const header = createMessageHeader(from, MessageType.HEARTBEAT, undefined, sequence);
+
+  return {
+    header,
+    body: Buffer.from(JSON.stringify({
+      sequence,
+      capabilities: ['tcp', 'json'],
+    })),
+    signature,
+  };
+}
+
+/**
+ * Create a disconnect message
+ */
+export function createDisconnectMessage(
+  from: NodeID,
+  reason: string,
+  signature: Buffer
+): BaseMessage {
+  const header = createMessageHeader(from, MessageType.DISCONNECT);
+
+  return {
+    header,
+    body: Buffer.from(JSON.stringify({
+      reason,
+    })),
+    signature,
+  };
+}
+
+/**
+ * Create a business message (chat, RPC, etc.)
+ */
+export function createBusinessMessage(
+  from: NodeID,
+  to: NodeID,
+  type: MessageType,
+  data: any,
+  signature: Buffer
+): BaseMessage {
+  const header = createMessageHeader(from, type, to);
+
+  return {
+    header,
+    body: Buffer.from(JSON.stringify(data)),
+    signature,
+  };
+}
+
+/**
+ * Check if a message is a control message
+ */
+export function isControlMessage(type: MessageType): boolean {
+  return type >= MessageType.DISCOVER && type <= MessageType.DISCONNECT;
+}
+
+/**
+ * Check if a message is a business message
+ */
+export function isBusinessMessage(type: MessageType): boolean {
+  return type >= MessageType.CHAT && type < MessageType.PEER_EXCHANGE;
 }
 
 // Simple varint encoding (for small values)

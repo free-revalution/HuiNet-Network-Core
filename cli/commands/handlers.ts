@@ -262,8 +262,15 @@ export async function disconnectFrom(
   }
 
   console.log('');
-  showMessage('info', `Disconnecting from ${alias}...`);
-  showMessage('warning', 'This feature requires extending HuiNet implementation');
+  showMessage('info', `Disconnecting from ${alias} (${nodeID.slice(0, 8)}...)...`);
+
+  const disconnected = await huinet.disconnectFromNode(nodeID);
+
+  if (disconnected) {
+    showMessage('success', `Disconnected from ${alias}`);
+  } else {
+    showMessage('error', `Failed to disconnect from ${alias}`);
+  }
 }
 
 /**

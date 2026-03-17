@@ -61,8 +61,10 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
+    "@types/ws": "^8.18.1",
     "commander": "^11.1.0",
     "multicast-dns": "^7.2.5",
-    "tweetnacl": "^1.0.3"
+    "tweetnacl": "^1.0.3",
+    "ws": "^8.19.0"
   }
 }

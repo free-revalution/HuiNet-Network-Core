@@ -1,12 +1,17 @@
 /**
- * 配置管理器
+ * Configuration manager
  *
- * 管理用户配置、别名、消息历史等
+ * Manages user configuration, aliases, message history, etc.
  */
 
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import {
+  validateConfigData,
+  sanitizeConfigData,
+  ValidationError,
+} from '../../src/utils/validation';
 
 export interface ConfigData {
   name: string;
@@ -58,19 +63,34 @@ export class ConfigManager {
   }
 
   /**
-   * 加载配置
+   * Load configuration
    */
   private load(): ConfigData {
     try {
       if (fs.existsSync(this.configPath)) {
         const content = fs.readFileSync(this.configPath, 'utf-8');
-        return JSON.parse(content);
+        const data = JSON.parse(content);
+
+        // Validate configuration
+        try {
+          validateConfigData(data);
+          return data;
+        } catch (error) {
+          if (error instanceof ValidationError) {
+            console.warn(`⚠️  Configuration validation failed: ${error.message}`);
+            console.warn('⚠️  Sanitizing configuration and using defaults for invalid values');
+            return sanitizeConfigData(data);
+          }
+          throw error;
+        }
       }
     } catch (error) {
-      console.warn('⚠️ 配置文件加载失败，使用默认配置');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.warn(`⚠️  Failed to load configuration file: ${errorMessage}`);
+      console.warn('⚠️  Using default configuration');
     }
 
-    // 返回默认配置
+    // Return default configuration
     return {
       name: 'MyAgent',
       aliases: {},

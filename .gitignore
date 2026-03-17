@@ -35,3 +35,4 @@ docs/测试/
 # Environment
 .env
 .env.local
+specs/
