@@ -27,7 +27,7 @@ coverage/
 .nyc_output/
 
 # Documentation (exclude generated docs, but keep plans)
-docs/*.md
+# docs/*.md  # Commented out to allow API documentation
 !docs/plans/
 docs/暂无/
 docs/测试/
