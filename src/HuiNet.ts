@@ -473,7 +473,9 @@ export class HuiNet extends EventEmitter {
       // Connection failed, cleanup
       try {
         client.disconnect();
-      } catch {}
+      } catch {
+        // Ignore cleanup errors
+      }
       return false;
     }
   }

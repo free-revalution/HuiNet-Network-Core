@@ -42,6 +42,7 @@ const Box = {
  */
 function fitWidth(text: string, width: number): string {
   // Remove ANSI codes for length calculation
+  // eslint-disable-next-line no-control-regex
   const cleanText = text.replace(/\x1b\[[0-9;]*m/g, '');
   const padding = width - cleanText.length;
 
@@ -56,6 +57,7 @@ function fitWidth(text: string, width: number): string {
  */
 function centerText(text: string, width: number): string {
   // Remove ANSI codes for length calculation
+  // eslint-disable-next-line no-control-regex
   const cleanText = text.replace(/\x1b\[[0-9;]*m/g, '');
   const padding = width - cleanText.length;
 

@@ -76,7 +76,7 @@ export class Base58 {
     }
 
     // Add leading zeros back
-    let result = Buffer.alloc(leadingZeros);
+    const result = Buffer.alloc(leadingZeros);
     const valueBuffer = Buffer.from(hex, 'hex');
     return Buffer.concat([result, valueBuffer]);
   }
