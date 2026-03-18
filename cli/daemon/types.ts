@@ -15,15 +15,9 @@ export interface MachineInfo {
 }
 
 /**
- * Agent status enum
+ * Agent status as a union type (spec requirement)
  */
-export enum AgentStatus {
-  STARTING = 'starting',
-  RUNNING = 'running',
-  STOPPING = 'stopping',
-  STOPPED = 'stopped',
-  ERROR = 'error',
-}
+export type AgentStatus = 'running' | 'busy' | 'idle' | 'offline';
 
 /**
  * Agent information
@@ -37,9 +31,9 @@ export interface AgentInfo {
   agentType: string;
   /** Human-readable agent name */
   agentName: string;
-  /** Process ID of the agent */
-  pid?: number;
-  /** Current status of the agent */
+  /** Process ID of the agent - REQUIRED per spec */
+  pid: number;
+  /** Current status of the agent - using union type per spec */
   status: AgentStatus;
   /** Timestamp of last heartbeat */
   lastHeartbeat: number;

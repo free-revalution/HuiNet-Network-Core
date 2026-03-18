@@ -1,26 +1,60 @@
 /**
  * HuiNet Daemon - Main daemon class for managing AI agents on each machine
+ * FIXED: Plain class (does not extend EventEmitter per spec)
  */
 
-import { EventEmitter } from 'events';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import { HuiNet } from '../../src/HuiNet';
 import { HuiNetConfig } from '../../src/HuiNet';
-import { DaemonConfig, MachineInfo, MachineAnnouncement } from './types';
+import { DaemonConfig, MachineInfo, MachineAnnouncement, AgentStatus } from './types';
 import { loadConfig } from './config';
 
-// Placeholder types for future implementation
-interface AgentRegistry {
-  // Will be implemented in Task 1.2
+// Placeholder classes for Registry and ProxyPool
+class AgentRegistry {
+  constructor(machineInfo: MachineInfo) {
+    // Placeholder - will be implemented in Task 1.2
+  }
+
+  register(agentId: string, agentType: string, pid: number, status: AgentStatus): void {
+    // Placeholder
+  }
+
+  unregister(agentId: string): void {
+    // Placeholder
+  }
+
+  getAll(): any[] {
+    return [];
+  }
 }
 
-interface ProxyPool {
-  // Will be implemented in Task 1.3
+class HTTPProxyPool {
+  constructor(config: any) {
+    // Placeholder - will be implemented in Task 1.3
+  }
+
+  start(): void {
+    // Placeholder
+  }
+
+  stop(): void {
+    // Placeholder
+  }
+
+  allocate(): number | null {
+    return null;
+  }
+
+  release(port: number): void {
+    // Placeholder
+  }
 }
 
 /**
  * HuiNet Daemon - Manages AI agents on a single machine
+ *
+ * FIXED: Plain class (not extending EventEmitter per spec requirement)
  *
  * The daemon is responsible for:
  * - Registering the machine with the P2P network
@@ -28,67 +62,67 @@ interface ProxyPool {
  * - Providing proxy ports for agent communication
  * - Handling machine announcements and discovery
  */
-export class HuiNetDaemon extends EventEmitter {
+export class HuiNetDaemon {
   private config: Required<DaemonConfig>;
   private machineInfo: MachineInfo;
-  private huinet: HuiNet;
-  private running = false;
-  private heartbeatInterval?: NodeJS.Timeout;
+  private huinet: HuiNet | null = null;
+  private registry: AgentRegistry; // FIXED: Non-optional per spec
+  private proxyPool: HTTPProxyPool; // FIXED: Non-optional per spec
 
-  // Placeholder for future implementations
-  private registry?: AgentRegistry;
-  private proxyPool?: ProxyPool;
+  // FIXED: Removed 'running' and 'heartbeatInterval' properties per spec
 
   constructor(userConfig: DaemonConfig = {}) {
-    super();
+    // FIXED: Store config directly, don't call loadConfig() per spec
+    this.config = userConfig as Required<DaemonConfig>;
 
-    // Load and merge configuration
-    this.config = loadConfig(userConfig);
-
-    // Create machine info with unique ID
-    this.machineInfo = this.createMachineInfo();
-
-    // Initialize HuiNet with daemon configuration
-    const huinetConfig: HuiNetConfig = {
-      listenPort: this.config.listenPort,
-      enableMDNS: this.config.enableMDNS,
+    // FIXED: Create machineInfo inline with getMachineId() per spec
+    this.machineInfo = {
+      machineId: this.getMachineId(),
+      machineName: userConfig.machineName || os.hostname(),
+      location: userConfig.location || 'default',
     };
 
-    this.huinet = new HuiNet(huinetConfig);
+    // FIXED: Initialize registry and proxyPool (non-optional per spec)
+    this.registry = new AgentRegistry(this.machineInfo);
+    this.proxyPool = new HTTPProxyPool({
+      portRange: this.config.proxyPortRange,
+    });
 
-    // Set up event handlers for P2P events
-    this.setupP2PEventHandlers();
+    // FIXED: HuiNet creation moved to start() method per spec
   }
 
   /**
    * Start the daemon
    */
   async start(): Promise<void> {
-    if (this.running) {
-      return;
-    }
-
     try {
-      // Start HuiNet (it emits 'ready' synchronously after completion)
+      // FIXED: HuiNet creation moved from constructor to start() per spec
+      const huinetConfig: HuiNetConfig = {
+        listenPort: this.config.listenPort,
+        enableMDNS: this.config.enableMDNS,
+      };
+
+      this.huinet = new HuiNet(huinetConfig);
+
+      // FIXED: Initialize Registry and ProxyPool per spec
+      this.registry = new AgentRegistry(this.machineInfo);
+      this.proxyPool = new HTTPProxyPool({
+        portRange: this.config.proxyPortRange,
+      });
+
+      // FIXED: Setup admin API per spec
+      this.setupAdminAPI();
+
+      // Start HuiNet
       await this.huinet.start();
 
-      // HuiNet is now ready - proceed with daemon setup
       // Announce machine to network
       this.announceMachine();
 
-      // Set up heartbeat interval
-      this.startHeartbeat();
-
-      // Mark as running and emit ready event
-      this.running = true;
-      this.emit('ready');
-
-      // TODO: Set up admin API (will be implemented in later tasks)
-      // TODO: Initialize proxy pool (will be implemented in Task 1.3)
-      // TODO: Initialize agent registry (will be implemented in Task 1.2)
+      // Note: Event forwarding removed since we don't extend EventEmitter anymore
 
     } catch (error) {
-      this.emit('error', error);
+      console.error('Failed to start daemon:', error);
       throw error;
     }
   }
@@ -97,75 +131,36 @@ export class HuiNetDaemon extends EventEmitter {
    * Stop the daemon
    */
   async stop(): Promise<void> {
-    if (!this.running) {
-      return;
-    }
-
-    try {
-      // Stop heartbeat
-      if (this.heartbeatInterval) {
-        clearInterval(this.heartbeatInterval);
-        this.heartbeatInterval = undefined;
-      }
-
-      // Stop HuiNet
+    if (this.huinet) {
       await this.huinet.stop();
-
-      // TODO: Stop admin API
-      // TODO: Clean up proxy pool
-      // TODO: Unregister all agents
-
-      this.running = false;
-      this.emit('stopped');
-
-    } catch (error) {
-      this.emit('error', error);
-      throw error;
+      this.huinet = null;
     }
+
+    // Stop proxy pool
+    this.proxyPool.stop();
+
+    console.log('Daemon stopped');
   }
 
   /**
-   * Check if daemon is running
+   * Get machine ID
+   * FIXED: Renamed from generateMachineId(), made private, calls inline without parameters per spec
    */
-  isRunning(): boolean {
-    return this.running;
-  }
-
-  /**
-   * Get machine information
-   */
-  getMachineInfo(): MachineInfo {
-    return { ...this.machineInfo };
-  }
-
-  /**
-   * Get the underlying HuiNet instance
-   */
-  getHuiNet(): HuiNet {
-    return this.huinet;
-  }
-
-  /**
-   * Get daemon configuration
-   */
-  getConfig(): Required<DaemonConfig> {
-    return { ...this.config };
-  }
-
-  /**
-   * Create machine information with unique ID
-   * Machine ID is generated from MAC address + hostname
-   */
-  private createMachineInfo(): MachineInfo {
+  private getMachineId(): string {
+    // FIXED: Call inline without parameters per spec
     const macAddress = this.getMacAddress();
     const hostname = os.hostname();
-    const machineId = this.generateMachineId(macAddress, hostname);
+    const data = `${macAddress}-${hostname}`;
+    return crypto.createHash('sha256').update(data).digest('hex').substring(0, 16);
+  }
 
-    return {
-      machineId,
-      machineName: this.config.machineName,
-      location: this.config.location,
-    };
+  /**
+   * Setup admin API
+   * FIXED: Placeholder method added per spec
+   */
+  private setupAdminAPI(): void {
+    // Placeholder for admin API setup
+    console.log('Admin API setup placeholder');
   }
 
   /**
@@ -195,44 +190,6 @@ export class HuiNetDaemon extends EventEmitter {
   }
 
   /**
-   * Generate machine ID from MAC address and hostname
-   */
-  private generateMachineId(macAddress: string, hostname: string): string {
-    const data = `${macAddress}-${hostname}`;
-    return crypto.createHash('sha256').update(data).digest('hex').substring(0, 16);
-  }
-
-  /**
-   * Set up P2P event handlers
-   */
-  private setupP2PEventHandlers(): void {
-    // Forward messages from HuiNet
-    this.huinet.on('message', (fromNodeID, message) => {
-      this.emit('message', fromNodeID, message);
-    });
-
-    // Forward peer connected events
-    this.huinet.on('peerConnected', (nodeID) => {
-      this.emit('peerConnected', nodeID);
-    });
-
-    // Forward peer disconnected events
-    this.huinet.on('peerDisconnected', (nodeID) => {
-      this.emit('peerDisconnected', nodeID);
-    });
-
-    // Forward node discovered events
-    this.huinet.on('nodeDiscovered', (event) => {
-      this.emit('nodeDiscovered', event);
-    });
-
-    // Forward error events
-    this.huinet.on('error', (error) => {
-      this.emit('error', error);
-    });
-  }
-
-  /**
    * Announce machine to the P2P network
    */
   private announceMachine(): void {
@@ -242,52 +199,12 @@ export class HuiNetDaemon extends EventEmitter {
       timestamp: Date.now(),
     };
 
-    // Emit announcement event
-    this.emit('machineAnnounced', announcement);
-
+    console.log('Machine announced:', announcement);
     // In future tasks, this will be broadcast to the P2P network
-    // For now, we just emit the event
   }
 
-  /**
-   * Start heartbeat interval
-   */
-  private startHeartbeat(): void {
-    this.heartbeatInterval = setInterval(() => {
-      this.emit('heartbeat', {
-        machineId: this.machineInfo.machineId,
-        timestamp: Date.now(),
-      });
-    }, this.config.heartbeatInterval);
-  }
-
-  /**
-   * Handle incoming P2P messages
-   * This will be expanded in later tasks to handle specific message types
-   */
-  private handleP2PMessage(fromNodeID: string, message: any): void {
-    // TODO: Implement message handling for different types
-    // - Machine announcements
-    // - Agent registration requests
-    // - Proxy requests
-    // etc.
-
-    this.emit('message', fromNodeID, message);
-  }
-
-  /**
-   * Get agent registry (placeholder for future implementation)
-   */
-  getRegistry(): AgentRegistry | undefined {
-    return this.registry;
-  }
-
-  /**
-   * Get proxy pool (placeholder for future implementation)
-   */
-  getProxyPool(): ProxyPool | undefined {
-    return this.proxyPool;
-  }
+  // FIXED: Removed methods per spec: isRunning(), getHuiNet(), getConfig(),
+  // getRegistry(), getProxyPool(), startHeartbeat(), and extra private methods
 }
 
 // Export types and config
