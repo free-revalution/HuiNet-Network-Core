@@ -9,47 +9,8 @@ import { HuiNet } from '../../src/HuiNet';
 import { HuiNetConfig } from '../../src/HuiNet';
 import { DaemonConfig, MachineInfo, MachineAnnouncement, AgentStatus } from './types';
 import { loadConfig } from './config';
-
-// Placeholder classes for Registry and ProxyPool
-class AgentRegistry {
-  constructor(machineInfo: MachineInfo) {
-    // Placeholder - will be implemented in Task 1.2
-  }
-
-  register(agentId: string, agentType: string, pid: number, status: AgentStatus): void {
-    // Placeholder
-  }
-
-  unregister(agentId: string): void {
-    // Placeholder
-  }
-
-  getAll(): any[] {
-    return [];
-  }
-}
-
-class HTTPProxyPool {
-  constructor(config: any) {
-    // Placeholder - will be implemented in Task 1.3
-  }
-
-  start(): void {
-    // Placeholder
-  }
-
-  stop(): void {
-    // Placeholder
-  }
-
-  allocate(): number | null {
-    return null;
-  }
-
-  release(port: number): void {
-    // Placeholder
-  }
-}
+import { AgentRegistry } from './registry';
+import { HTTPProxyPool } from './proxy';
 
 /**
  * HuiNet Daemon - Manages AI agents on a single machine
@@ -142,9 +103,9 @@ export class HuiNetDaemon {
       this.huinet = null;
     }
 
-    // Stop proxy pool if it was initialized
+    // Close proxy pool if it was initialized
     if (this.proxyPool) {
-      this.proxyPool.stop();
+      await this.proxyPool.closeAll();
     }
 
     console.log('Daemon stopped');
