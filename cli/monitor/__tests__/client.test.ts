@@ -26,22 +26,20 @@ describe('DaemonClient', () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          status: 'running',
-          machineId: 'machine-123',
-          stats: {
-            totalAgents: 2,
-            activeAgents: 2,
-          },
-          proxyStats: {
-            total: 10,
-            active: 2,
-          },
+          machines: [
+            {
+              machineId: 'machine-123',
+              machineName: 'Machine 123',
+              location: 'local',
+              agents: [],
+            },
+          ],
         }),
       });
 
       await expect(client.connect()).resolves.not.toThrow();
       expect(global.fetch).toHaveBeenCalledWith(
-        `${mockDaemonUrl}/api/status`
+        `${mockDaemonUrl}/api/topology`
       );
     });
 
@@ -146,7 +144,7 @@ describe('DaemonClient', () => {
       ).resolves.not.toThrow();
 
       expect(global.fetch).toHaveBeenCalledWith(
-        `${mockDaemonUrl}/api/messages/send`,
+        `${mockDaemonUrl}/api/send`,
         expect.objectContaining({
           method: 'POST',
           headers: {

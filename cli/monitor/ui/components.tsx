@@ -11,7 +11,7 @@ import { AgentInfo, AgentStatus } from '../../daemon/types';
  * Props for TopologyView component
  */
 export interface TopologyViewProps {
-  machines: Array<{
+  topology: Array<{
     machineId: string;
     machineName: string;
     location: string;
@@ -33,8 +33,8 @@ const STATUS_COLORS: Record<AgentStatus, string> = {
 /**
  * TopologyView component - displays network topology
  */
-export const TopologyView: React.FC<TopologyViewProps> = ({ machines, selectedIndex = 0 }) => {
-  if (machines.length === 0) {
+export const TopologyView: React.FC<TopologyViewProps> = ({ topology, selectedIndex = 0 }) => {
+  if (topology.length === 0) {
     return (
       <Box paddingX={1}>
         <Text dimColor>No machines in network</Text>
@@ -44,7 +44,7 @@ export const TopologyView: React.FC<TopologyViewProps> = ({ machines, selectedIn
 
   return (
     <Box flexDirection="column" paddingX={1}>
-      {machines.map((machine, machineIndex) => (
+      {topology.map((machine, machineIndex) => (
         <Box key={machine.machineId} flexDirection="column" marginBottom={1}>
           <Box>
             <Text bold color="cyan">
@@ -86,21 +86,18 @@ export const TopologyView: React.FC<TopologyViewProps> = ({ machines, selectedIn
  * Props for StatusBar component
  */
 export interface StatusBarProps {
-  machineId: string;
-  totalAgents: number;
-  activeAgents: number;
+  stats: {
+    machineId: string;
+    totalAgents: number;
+    activeAgents: number;
+  };
   uptime?: number;
 }
 
 /**
  * StatusBar component - shows statistics at bottom
  */
-export const StatusBar: React.FC<StatusBarProps> = ({
-  machineId,
-  totalAgents,
-  activeAgents,
-  uptime,
-}) => {
+export const StatusBar: React.FC<StatusBarProps> = ({ stats, uptime }) => {
   const formatUptime = (ms: number): string => {
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
@@ -119,13 +116,13 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     <Box borderStyle="single" paddingX={1} justifyContent="space-between">
       <Box>
         <Text bold>Machine: </Text>
-        <Text color="cyan">{machineId}</Text>
+        <Text color="cyan">{stats.machineId}</Text>
       </Box>
       <Box>
         <Text bold>Agents: </Text>
-        <Text color="green">{activeAgents}</Text>
+        <Text color="green">{stats.activeAgents}</Text>
         <Text dimColor>/</Text>
-        <Text>{totalAgents}</Text>
+        <Text>{stats.totalAgents}</Text>
       </Box>
       {uptime !== undefined && (
         <Box>
@@ -326,7 +323,7 @@ export const MonitorApp: React.FC<MonitorAppProps> = ({ daemonUrl, client }) => 
         />
       ) : (
         <Box flexGrow={1}>
-          <TopologyView machines={machines} selectedIndex={selectedAgentIndex} />
+          <TopologyView topology={machines} selectedIndex={selectedAgentIndex} />
         </Box>
       )}
 
@@ -341,12 +338,7 @@ export const MonitorApp: React.FC<MonitorAppProps> = ({ daemonUrl, client }) => 
 
       {/* Status bar */}
       <Box marginTop={1}>
-        <StatusBar
-          machineId={stats.machineId}
-          totalAgents={stats.totalAgents}
-          activeAgents={stats.activeAgents}
-          uptime={uptime}
-        />
+        <StatusBar stats={stats} uptime={uptime} />
       </Box>
     </Box>
   );

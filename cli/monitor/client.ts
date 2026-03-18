@@ -125,7 +125,7 @@ export class DaemonClient {
    */
   async connect(): Promise<void> {
     try {
-      const response = await fetch(`${this.daemonUrl}/api/status`);
+      const response = await fetch(`${this.daemonUrl}/api/topology`);
 
       if (!response.ok) {
         throw new Error(`Daemon returned error: ${response.status} ${response.statusText}`);
@@ -169,7 +169,7 @@ export class DaemonClient {
    */
   async sendMessage(fromAgent: string, toAgent: string, message: string): Promise<void> {
     try {
-      const response = await fetch(`${this.daemonUrl}/api/messages/send`, {
+      const response = await fetch(`${this.daemonUrl}/api/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -10,7 +10,7 @@ import { MonitorApp } from './ui/components';
 /**
  * Default daemon URL
  */
-const DEFAULT_DAEMON_URL = 'http://localhost:3000';
+const DEFAULT_DAEMON_URL = 'http://127.0.0.1:3000';
 
 /**
  * Get daemon URL from environment or use default
