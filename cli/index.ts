@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import { createDaemon } from './daemon';
 import { createConfigManager } from './config/agent-config';
 import { createProcessManager } from './launcher';
+import { createNetworkManager } from './network';
 
 const program = new Command();
 
@@ -40,12 +41,27 @@ program
         process.exit(1);
       }
 
+      // Load network configuration
+      const networkManager = createNetworkManager();
+      await networkManager.load();
+
+      const activeNetwork = networkManager.getActiveNetwork();
+      if (!activeNetwork) {
+        console.warn(`⚠ No active network. Agents may not be able to communicate.`);
+        console.warn(`  Use: huinet network create <name>`);
+      }
+
       // Create and start daemon
       const daemon = createDaemon();
 
       daemon.on('ready', () => {
+        const nodeId = daemon.getHuiNet()?.getNodeID();
         console.log(`✓ HuiNet daemon started`);
-        console.log(`  NodeID: ${daemon.getHuiNet()?.getNodeID()}`);
+        console.log(`  NodeID: ${nodeId?.substring(0, 16)}...`);
+
+        if (activeNetwork) {
+          console.log(`  Network: ${activeNetwork.name}`);
+        }
       });
 
       daemon.on('agentRegistered', (info) => {
@@ -184,31 +200,88 @@ networkCmd
   .command('create <name>')
   .description('Create a new network')
   .action(async (name) => {
-    const crypto = require('crypto');
-    const key = crypto.randomBytes(16).toString('hex');
+    const networkManager = createNetworkManager();
+    await networkManager.load();
 
-    console.log(`✓ Network "${name}" created.`);
-    console.log(`  Network Key: ${key}`);
+    const network = await networkManager.createNetwork(name);
+
+    console.log(`✓ Network "${name}" created!`);
+    console.log(`\n🔑 Network Key: \x1b[1m${network.key}\x1b[0m`);
     console.log(`\nShare this key with trusted agents:`);
-    console.log(`  huinet network join ${name} ${key}`);
+    console.log(`  huinet network join ${name} ${network.key}\n`);
   });
 
 networkCmd
   .command('join <name> <key>')
   .description('Join an existing network')
   .action(async (name, key) => {
-    // TODO: Phase 4 - Implement network join with key
-    console.log(`✓ Joined network "${name}".`);
-    console.log(`  Key: ${key.substring(0, 8)}...`);
-    console.log(`  This feature will be fully implemented in Phase 4.`);
+    const networkManager = createNetworkManager();
+    await networkManager.load();
+
+    if (!networkManager.verifyKey(key)) {
+      console.error(`❌ Invalid network key format.`);
+      console.log(`  Key must be 32 character hex string.`);
+      process.exit(1);
+    }
+
+    const network = await networkManager.joinNetwork(name, key);
+
+    console.log(`✓ Joined network "${name}"`);
+    console.log(`  Machine ID: ${network.machineId}`);
+    console.log(`\nYou can now start agents with: huinet run <agent-id>\n`);
+  });
+
+networkCmd
+  .command('list')
+  .description('List all networks')
+  .action(async () => {
+    const networkManager = createNetworkManager();
+    await networkManager.load();
+
+    const networks = networkManager.getAllNetworks();
+
+    if (networks.length === 0) {
+      console.log('No networks configured.');
+      console.log('\nCreate a network:');
+      console.log('  huinet network create <name>');
+      return;
+    }
+
+    console.log('\n📡 Configured Networks\n');
+
+    for (let i = 0; i < networks.length; i++) {
+      const network = networks[i];
+      const active = network.active ? '\x1b[32m*active\x1b[0m' : '';
+      console.log(`  ${i + 1}. \x1b[1m${network.name}\x1b[0m ${active}`);
+      console.log(`     Key: ${network.key.substring(0, 16)}...`);
+      if (network.machineId) {
+        console.log(`     Machine: ${network.machineId}`);
+      }
+    }
   });
 
 networkCmd
   .command('status')
   .description('Show network status')
   .action(async () => {
-    console.log('Network Status:');
-    console.log('  This feature will be implemented in Phase 4.');
+    const networkManager = createNetworkManager();
+    await networkManager.load();
+
+    const activeNetwork = networkManager.getActiveNetwork();
+
+    if (!activeNetwork) {
+      console.log('No active network.');
+      console.log('\nCreate or join a network:');
+      console.log('  huinet network create <name>');
+      console.log('  huinet network join <name> <key>');
+      return;
+    }
+
+    console.log('\n📡 Network Status\n');
+    console.log(`  Name: \x1b[1m${activeNetwork.name}\x1b[0m`);
+    console.log(`  Key: ${activeNetwork.key}`);
+    console.log(`  Machine: ${activeNetwork.machineId}`);
+    console.log(`  Status: \x1b[32mActive\x1b[0m`);
   });
 
 // =============================================================================
@@ -242,9 +315,25 @@ program
       await configManager.load();
       const agents = configManager.getAgents();
       checks.push({ name: 'Configuration valid', pass: true });
-      checks.push({ name: `Agents configured: ${agents.length}`, pass: true });
+      checks.push({ name: `Agents configured: ${agents.length}`, pass: agents.length > 0 });
     } catch {
       checks.push({ name: 'Configuration valid', pass: false });
+    }
+
+    // Check network
+    const networkManager = createNetworkManager();
+    try {
+      await networkManager.load();
+      const activeNetwork = networkManager.getActiveNetwork();
+      if (activeNetwork) {
+        checks.push({ name: 'Network configured', pass: true });
+        checks.push({ name: `Active network: ${activeNetwork.name}`, pass: true });
+      } else {
+        checks.push({ name: 'Network configured', pass: false });
+        checks.push({ name: 'No active network', pass: false });
+      }
+    } catch {
+      checks.push({ name: 'Network configuration', pass: false });
     }
 
     // Print results

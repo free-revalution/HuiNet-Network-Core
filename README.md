@@ -9,14 +9,14 @@
 ╚═╝  ╚═╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝
   </pre>
 
-  **P2P Agent Networking**
+  **Decentralized P2P Agent Networking**
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
   [![Node Version](https://img.shields.io/badge/node-%3E=16.0.0-green)](https://nodejs.org/)
-  [![Tests](https://img.shields.io/badge/tests-282%20passed-success)](https://github.com/free-revalution/HuiNet-Network-Core)
+  [![Tests](https://img.shields.io/badge/tests-331%20passed-success)](https://github.com/free-revalution/HuiNet-Network-Core)
 
-  [Status](#project-status) • [Architecture](#architecture) • [SDK](#sdk-usage)
+  [Usage Guide](docs/USAGE.md) • [API Reference](docs/api-reference.md) • [Examples](docs/examples/)
 
 </div>
 
@@ -24,24 +24,113 @@
 
 ## HuiNet
 
-**HuiNet** is a decentralized P2P networking library that enables AI agents (Claude Code, OpenClaw, CodeX, etc.) to communicate directly across networks.
+**HuiNet** enables AI agents (Claude Code, OpenClaw, CodeX, etc.) to communicate directly across networks through automatic P2P discovery and encrypted messaging.
 
-### Current Status: 🚧 Under Refactoring
+---
 
-We are refactoring HuiNet to focus on **Agent-to-Agent (A2A) communication** as the core function.
+## Features
 
-**What's changing:**
-- ✅ **Keeping**: P2P networking core (mDNS, TCP transport, routing, encryption)
-- ❌ **Removing**: HTTP/WebSocket API proxy (major agents won't integrate via API)
-- 🔄 **Building**: Agent wrapper with one-command startup
+### Core Networking
+- **Auto Discovery**: mDNS for local network discovery
+- **P2P Communication**: Direct agent-to-agent messaging
+- **Encrypted**: Ed25519 public-key cryptography
+- **Cross-Network**: Bootstrap nodes for NAT traversal
+- **WebSocket Interface**: For agent integration
 
-**Target Experience:**
+### Agent Management
+- **One-Command Launch**: `huinet run <agent>`
+- **Configuration**: YAML-based agent profiles
+- **Network Keys**: Secure network authentication
+- **Process Management**: Automatic lifecycle handling
+
+---
+
+## Quick Start
+
+### 1. Installation
+
 ```bash
-# One command to start an agent with HuiNet
+git clone https://github.com/free-revalution/HuiNet-Network-Core.git
+cd HuiNet-Network-Core
+npm install
+npm run build
+npm link  # Optional
+```
+
+### 2. Create Network
+
+```bash
+huinet network create MyTeam
+# Output: Network Key: a3f7c9e24b1d8x6y...
+```
+
+### 3. Configure Agent
+
+```bash
+huinet agent add claude-code --command "/usr/local/bin/claude-code"
+```
+
+### 4. Start Agent
+
+```bash
 huinet run claude-code
 ```
 
-See [Refactoring Plan](docs/plans/2026-03-18-huinet-refactor-plan.md) for details.
+**On another computer:**
+
+```bash
+huinet network join MyTeam <key-from-step-2>
+huinet agent add claude-code --command "/usr/local/bin/claude-code"
+huinet run claude-code
+```
+
+---
+
+## Usage
+
+```bash
+# Network management
+huinet network create <name>              # Create network
+huinet network join <name> <key>         # Join network
+huinet network list                       # List networks
+huinet network status                     # Show network status
+
+# Agent management
+huinet agent add <id> --command <path>     # Add agent
+huinet agent list                          # List agents
+huinet agent remove <id>                   # Remove agent
+
+# Start agent
+huinet run <agent-id>                       # Launch agent
+
+# System check
+huinet doctor                               # Check system status
+```
+
+See [USAGE.md](docs/USAGE.md) for detailed guide.
+
+---
+
+## Configuration Files
+
+Located in `~/.huinet/`:
+
+**agents.yaml** - Agent configurations:
+```yaml
+- id: "claude-code"
+  name: "Claude Code"
+  command: "/usr/local/bin/claude-code"
+  args: ["--no-color"]
+  workdir: "~/projects"
+```
+
+**networks.yaml** - Network configurations:
+```yaml
+- name: "MyTeam"
+  key: "a3f7c9e24b1d8x6y..."
+  active: true
+  machineId: "machine-abc123..."
+```
 
 ---
 
@@ -50,15 +139,19 @@ See [Refactoring Plan](docs/plans/2026-03-18-huinet-refactor-plan.md) for detail
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                   User Computer A                            │
-│  ┌────────────────┐      ┌─────────────────────────────┐   │
-│  │  Agent         │◄─────►│  HuiNet (P2P Network)       │   │
-│  │  - Claude Code  │ WS    │  - mDNS Discovery           │   │
-│  │  - OpenClaw     │       │  - TCP Transport            │   │
-│  │  - CodeX        │       │  - Ed25519 Encryption       │   │
-│  └────────────────┘      │  - 3-Layer Routing           │   │
-│                           └─────────────────────────────┘   │└─────────────────────────────────────────────────────────────┘
-                              │ P2P Network (TCP)
-                              │
+│  ┌──────────────┐      ┌─────────────────────────────┐   │
+│  │ huinet run   │─────►│  HuiNet Daemon              │   │
+│  │ claude-code  │      │  - mDNS Discovery           │   │
+│  └──────────────┘      │  - P2P Network              │   │
+│         │              │  - WebSocket Server         │   │
+│         ▼              └─────────────────────────────┘   │
+│  ┌──────────────┐                                       │
+│  │  Agent       │◄─────── WebSocket / HTTP_PROXY      │
+│  │              │                                       │
+│  └──────────────┘                                       │
+└─────────────────────────────────────────────────────────────┘
+                         │ P2P Network
+                         │
 ┌─────────────────────────────────────────────────────────────┐
 │                   User Computer B                            │
 │              (Same architecture)                             │
@@ -67,84 +160,9 @@ See [Refactoring Plan](docs/plans/2026-03-18-huinet-refactor-plan.md) for detail
 
 ---
 
-## SDK Usage
-
-The core networking library is available as an npm package:
-
-### Installation
-
-```bash
-npm install @huinet/network
-```
-
-### Quick Start
-
-```typescript
-import { HuiNet } from '@huinet/network';
-
-// Create HuiNet instance
-const huinet = new HuiNet({
-  listenPort: 8000,
-  enableMDNS: true,
-});
-
-// Start the network
-await huinet.start();
-
-// Send message to another node
-await huinet.send(targetNodeID, { data: 'Hello World' });
-
-// Listen for incoming messages
-huinet.on('message', (fromNodeID, message) => {
-  console.log(`Received from ${fromNodeID}:`, message);
-});
-
-// Get routing table statistics
-const stats = huinet.getRoutingStats();
-console.log(`Core: ${stats.coreCount}, Active: ${stats.activeCount}, Known: ${stats.knownCount}`);
-```
-
----
-
-## Core Features
-
-### P2P Networking
-- **Auto Discovery**: mDNS for local network discovery
-- **Direct P2P**: TCP connections between agents
-- **Cross-Network**: Bootstrap nodes for NAT traversal
-- **Encrypted**: Ed25519 public-key cryptography
-
-### Routing Table
-Three-layer connection management:
-- **Core Layer**: Persistent connections (up to 10 nodes)
-- **Active Layer**: Frequently used nodes (up to 50 nodes)
-- **Known Layer**: Discovered nodes (unlimited)
-
-### Message Protocol
-- Handshake protocol for secure connections
-- Heartbeat for connection health
-- Message signing for authenticity
-
----
-
-## Project Status
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| P2P Core | ✅ Complete | 282 tests passing |
-| CLI (old) | 🔄 Refactoring | Removing REPL, NLP features |
-| HTTP Proxy | ❌ Removed | Not suitable for mainstream agents |
-| Agent Wrapper | 🚧 Planned | Phase 2-4 of refactor |
-
----
-
 ## Development
 
 ```bash
-# Clone repository
-git clone https://github.com/free-revalution/HuiNet-Network-Core.git
-cd HuiNet-Network-Core
-
 # Install dependencies
 npm install
 
@@ -154,22 +172,48 @@ npm test
 # Build
 npm run build
 
-# Run CLI (temporarily shows placeholder commands)
+# Run CLI
 npm run cli
+
+# Lint
+npm run lint
 ```
 
 ### Test Coverage
-- **Total Tests**: 282 ✅
-- **Coverage**: Core modules, utilities, protocol handlers
+- **Total Tests**: 331 ✅
+- **Coverage**: Core modules, protocol, launcher, config
 - **Test Framework**: Jest
+
+### Project Structure
+
+```
+HuiNet/
+├── src/                    # P2P network core
+│   ├── crypto/             # Ed25519 cryptography
+│   ├── protocol/           # Message protocol
+│   ├── routing/            # Three-layer routing table
+│   ├── transport/          # TCP client/server, pool
+│   ├── discovery/          # mDNS service discovery
+│   ├── types/              # TypeScript types
+│   └── utils/              # Utilities
+├── cli/                    # Command-line interface
+│   ├── daemon/             # Agent proxy and router
+│   ├── protocol/           # JSON-RPC protocol
+│   ├── launcher/           # Agent launcher
+│   ├── config/             # Configuration management
+│   ├── network/            # Network management
+│   └── types/              # CLI types
+├── docs/                   # Documentation
+└── bin/huinet              # Executable
+```
 
 ---
 
 ## Documentation
 
-- [Refactoring Plan](docs/plans/2026-03-18-huinet-refactor-plan.md) - Current roadmap
-- [Codebase Analysis](docs/plans/2026-03-18-codebase-analysis.md) - What's kept/removed
+- [Usage Guide](docs/USAGE.md) - Complete usage instructions
 - [API Reference](docs/api-reference.md) - SDK documentation
+- [Agent Integration](docs/agent-integration.md) - Integration guide
 
 ---
 
@@ -181,6 +225,8 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-[GitHub](https://github.com/free-revalution/HuiNet-Network-Core) • [Issues](https://github.com/free-revalution/HuiNet-Network-Core/issues) • **282 Tests Passing**
+[GitHub](https://github.com/free-revalution/HuiNet-Network-Core) • [Issues](https://github.com/free-revalution/HuiNet-Network-Core/issues)
+
+**331 Tests Passing**
 
 </div>
