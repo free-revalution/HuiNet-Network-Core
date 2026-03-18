@@ -66,27 +66,33 @@ export class HuiNetDaemon {
   private config: Required<DaemonConfig>;
   private machineInfo: MachineInfo;
   private huinet: HuiNet | null = null;
-  private registry: AgentRegistry; // FIXED: Non-optional per spec
-  private proxyPool: HTTPProxyPool; // FIXED: Non-optional per spec
+  private registry!: AgentRegistry; // FIXED: Definite assignment assertion - initialized in start()
+  private proxyPool!: HTTPProxyPool; // FIXED: Definite assignment assertion - initialized in start()
 
   // FIXED: Removed 'running' and 'heartbeatInterval' properties per spec
 
   constructor(userConfig: DaemonConfig = {}) {
-    // FIXED: Store config directly, don't call loadConfig() per spec
-    this.config = userConfig as Required<DaemonConfig>;
+    // FIXED: Proper config validation with defaults instead of type assertion
+    this.config = {
+      machineName: userConfig.machineName || os.hostname(),
+      location: userConfig.location || 'default',
+      listenPort: userConfig.listenPort ?? 8000,
+      enableMDNS: userConfig.enableMDNS ?? true,
+      adminPort: userConfig.adminPort ?? 3000,
+      proxyPortRange: userConfig.proxyPortRange ?? [8080, 8090],
+      heartbeatInterval: userConfig.heartbeatInterval ?? 3000,
+      heartbeatTimeout: userConfig.heartbeatTimeout ?? 10000,
+    };
 
     // FIXED: Create machineInfo inline with getMachineId() per spec
     this.machineInfo = {
       machineId: this.getMachineId(),
-      machineName: userConfig.machineName || os.hostname(),
-      location: userConfig.location || 'default',
+      machineName: this.config.machineName,
+      location: this.config.location,
     };
 
-    // FIXED: Initialize registry and proxyPool (non-optional per spec)
-    this.registry = new AgentRegistry(this.machineInfo);
-    this.proxyPool = new HTTPProxyPool({
-      portRange: this.config.proxyPortRange,
-    });
+    // FIXED: Don't initialize registry and proxyPool here - they're initialized in start()
+    // This prevents duplicate initialization
 
     // FIXED: HuiNet creation moved to start() method per spec
   }
@@ -136,8 +142,10 @@ export class HuiNetDaemon {
       this.huinet = null;
     }
 
-    // Stop proxy pool
-    this.proxyPool.stop();
+    // Stop proxy pool if it was initialized
+    if (this.proxyPool) {
+      this.proxyPool.stop();
+    }
 
     console.log('Daemon stopped');
   }

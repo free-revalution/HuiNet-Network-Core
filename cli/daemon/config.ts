@@ -11,8 +11,11 @@ import { DaemonConfig } from './types';
  * FIXED: Removed machineName and location defaults (not in spec)
  * FIXED: Changed heartbeatInterval from 30000 to 3000 per spec
  * FIXED: Changed heartbeatTimeout from 90000 to 10000 per spec
+ * FIXED: Added machineName and location to satisfy Required<DaemonConfig> type
  */
 export const DEFAULT_CONFIG: Required<DaemonConfig> = {
+  machineName: '', // Will be set to hostname in constructor
+  location: 'default', // Will be set by user or default
   listenPort: 8000,
   enableMDNS: true,
   adminPort: 3000,
@@ -34,6 +37,8 @@ export function loadConfig(configPath: string): Required<DaemonConfig> {
 
     // Merge with defaults
     return {
+      machineName: userConfig.machineName ?? DEFAULT_CONFIG.machineName,
+      location: userConfig.location ?? DEFAULT_CONFIG.location,
       listenPort: userConfig.listenPort ?? DEFAULT_CONFIG.listenPort,
       enableMDNS: userConfig.enableMDNS ?? DEFAULT_CONFIG.enableMDNS,
       adminPort: userConfig.adminPort ?? DEFAULT_CONFIG.adminPort,
