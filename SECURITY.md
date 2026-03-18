@@ -6,14 +6,15 @@ Security updates are applied only to the latest version of HuiNet.
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability, please do not open a public issue. Instead, send an email to the security team at: security@huinet.dev
+If you discover a security vulnerability, please do not open a public issue. Instead, report it privately through GitHub's Security Advisories:
 
-Please include:
-
-* Description of the vulnerability
-* Steps to reproduce
-* Potential impact
-* Version affected
+1. Visit: https://github.com/free-revalution/HuiNet-Network-Core/security/advisories
+2. Click "Report a vulnerability"
+3. Fill in the details including:
+   - Description of the vulnerability
+   - Steps to reproduce
+   - Potential impact
+   - Version affected
 
 We will acknowledge receipt within 48 hours and provide an estimated timeline for a fix.
 
@@ -39,7 +40,7 @@ We regularly update dependencies to address security vulnerabilities. Please rep
 
 * We will disclose vulnerabilities within 7 days of being notified
 - We will provide a patch within 14 days for critical vulnerabilities
-- Security advisories will be published at https://huinet.dev/advisories
+- Security advisories will be published at https://github.com/free-revalution/HuiNet-Network-Core/security/advisories
 
 ## Security Best Practices for Users
 
