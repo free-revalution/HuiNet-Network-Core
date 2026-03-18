@@ -51,6 +51,7 @@
   "homepage": "https://github.com/free-revalution/HuiNet-Network-Core#readme",
   "devDependencies": {
     "@types/express": "5.0.6",
+    "@types/ink": "^0.5.2",
     "@types/jest": "^29.5.0",
     "@types/node": "^20.0.0",
     "@types/react": "^19.2.14",

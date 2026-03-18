@@ -6,6 +6,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import { AgentInfo, AgentStatus } from '../../daemon/types';
+import { DaemonClient } from '../client';
+
+/**
+ * Ink key handler type
+ */
+interface InkKeyHandler {
+  escape?: boolean;
+  return?: boolean;
+  downArrow?: boolean;
+  upArrow?: boolean;
+}
 
 /**
  * Props for TopologyView component
@@ -158,7 +169,7 @@ export interface MainMenuProps {
 export const MainMenu: React.FC<MainMenuProps> = ({ options, isVisible, onClose }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  useInput((input, key) => {
+  useInput((input: string, key: InkKeyHandler) => {
     if (!isVisible) return;
 
     if (key.escape) {
@@ -205,7 +216,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ options, isVisible, onClose 
  */
 export interface MonitorAppProps {
   daemonUrl: string;
-  client: any; // DaemonClient - using any to avoid import issues
+  client: DaemonClient;
 }
 
 /**
@@ -217,7 +228,7 @@ export const MonitorApp: React.FC<MonitorAppProps> = ({ daemonUrl, client }) => 
     machineId: string;
     machineName: string;
     location: string;
-    agents: any[];
+    agents: AgentInfo[];
   }>>([]);
   const [stats, setStats] = useState({
     machineId: 'unknown',
@@ -235,8 +246,8 @@ export const MonitorApp: React.FC<MonitorAppProps> = ({ daemonUrl, client }) => 
       setMachines(topology.machines);
 
       // Calculate stats
-      const allAgents = topology.machines.flatMap((m: any) => m.agents);
-      const activeAgents = allAgents.filter((a: any) => a.status === 'running').length;
+      const allAgents = topology.machines.flatMap((m) => m.agents);
+      const activeAgents = allAgents.filter((a) => a.status === 'running').length;
 
       setStats({
         machineId: topology.machines[0]?.machineId || 'unknown',
@@ -244,7 +255,7 @@ export const MonitorApp: React.FC<MonitorAppProps> = ({ daemonUrl, client }) => 
         activeAgents,
       });
     } catch (error) {
-      // Silently ignore fetch errors
+      console.error('Failed to fetch topology:', error instanceof Error ? error.message : error);
     }
   }, [client]);
 
@@ -256,7 +267,7 @@ export const MonitorApp: React.FC<MonitorAppProps> = ({ daemonUrl, client }) => 
   }, [fetchTopology]);
 
   // Handle keyboard input
-  useInput((input, key) => {
+  useInput((input: string, key: InkKeyHandler) => {
     if (showMenu) return; // Let menu handle input
 
     if (key.escape) {
@@ -292,7 +303,6 @@ export const MonitorApp: React.FC<MonitorAppProps> = ({ daemonUrl, client }) => 
       label: 'Send Message',
       action: () => {
         setShowMenu(false);
-        // TODO: Implement message sending UI
       },
     },
     {

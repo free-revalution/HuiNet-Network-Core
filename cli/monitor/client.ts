@@ -168,6 +168,11 @@ export class DaemonClient {
    * Send a message from one agent to another
    */
   async sendMessage(fromAgent: string, toAgent: string, message: string): Promise<void> {
+    // Input validation
+    if (!fromAgent || !toAgent || !message) {
+      throw new Error('Invalid message parameters: fromAgent, toAgent, and message are required');
+    }
+
     try {
       const response = await fetch(`${this.daemonUrl}/api/send`, {
         method: 'POST',
