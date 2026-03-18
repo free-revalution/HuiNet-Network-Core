@@ -2,121 +2,56 @@
 /**
  * HuiNet CLI - Main Entry Point
  *
- * Command-line interface for HuiNet P2P Agent
+ * Command-line interface for HuiNet P2P Agent Networking
  */
 
 import { Command } from 'commander';
-import { startREPL } from './repl';
-import { showTitle } from './ui/display';
 
 const program = new Command();
 
 // CLI information
 program
   .name('huinet')
-  .description('HuiNet P2P Agent CLI - Simple command-line interface for P2P communication')
+  .description('HuiNet P2P Agent Networking - Connect AI agents across networks')
   .version('1.0.0');
 
-// Start interactive REPL (default command)
+// Show help by default
 program
-  .argument('[name]', 'Agent name', 'MyAgent')
-  .option('-n, --name <name>', 'Agent name')
-  .option('-p, --port <number>', 'Listen port', '8000')
-  .option('-h, --host <address>', 'Listen address', '0.0.0.0')
-  .option('--no-mdns', 'Disable mDNS discovery')
-  .option('-b, --bootstrap <addresses...>', 'Bootstrap node addresses')
-  .action(async (positionalName, options) => {
-    try {
-      // Use --name option if provided, otherwise use positional argument
-      const name = options.name || positionalName;
-      await startREPL({
-        name,
-        port: parseInt(options.port),
-        host: options.host,
-        mdns: options.mdns,
-        bootstrap: options.bootstrap
-      });
-    } catch (error) {
-      console.error('❌ Startup failed:', (error as Error).message);
-      process.exit(1);
-    }
-  });
-
-// Add alias command
-program
-  .command('alias')
-  .description('Manage node aliases')
-  .argument('<name>', 'Alias name')
-  .argument('<nodeID>', 'Node ID')
-  .action((name, nodeID) => {
-    const { ConfigManager } = require('./storage/config');
-    const config = ConfigManager.getInstance();
-    config.addAlias(name, nodeID);
-    config.save();
-    console.log(`✅ Alias set: ${name} = ${nodeID.substring(0, 20)}...`);
-  });
-
-// List aliases command
-program
-  .command('aliases')
-  .description('List all aliases')
   .action(() => {
-    const { ConfigManager } = require('./storage/config');
-    const config = ConfigManager.getInstance();
-    const aliases = config.getAliases();
-
-    showTitle('📋 Node Aliases');
-
-    if (Object.keys(aliases).length === 0) {
-      console.log('  (No aliases set yet)');
-      console.log('  Use: huinet alias <name> <NodeID>');
-    } else {
-      for (const [name, nodeID] of Object.entries(aliases)) {
-        console.log(`  ${name.padEnd(20)} = ${nodeID}`);
-      }
-    }
+    program.outputHelp();
   });
 
-// Reset configuration command
+// Placeholder commands - will be implemented in Phase 4
 program
-  .command('reset')
-  .description('Reset all configuration')
-  .option('-f, --force', 'Force reset without confirmation')
-  .action((options) => {
-    const readline = require('readline');
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
+  .command('run <agent-name>')
+  .description('Start an agent with HuiNet (coming soon)')
+  .action(() => {
+    console.log('❌ This command will be implemented in Phase 4');
+    console.log('   Current phase: Cleaning up codebase (Phase 1)');
+  });
 
-    const confirm = () => {
-      const fs = require('fs');
-      const path = require('path');
-      const os = require('os');
-      const configPath = path.join(os.homedir(), '.huinet', 'config.json');
+program
+  .command('agent')
+  .description('Manage agent configurations (coming soon)')
+  .action(() => {
+    console.log('❌ This command will be implemented in Phase 4');
+    console.log('   Current phase: Cleaning up codebase (Phase 1)');
+  });
 
-      if (fs.existsSync(configPath)) {
-        fs.unlinkSync(configPath);
-        console.log('✅ Configuration reset');
-      } else {
-        console.log('ℹ️ No configuration file found');
-      }
+program
+  .command('network')
+  .description('Manage network configuration (coming soon)')
+  .action(() => {
+    console.log('❌ This command will be implemented in Phase 4');
+    console.log('   Current phase: Cleaning up codebase (Phase 1)');
+  });
 
-      rl.close();
-    };
-
-    if (options.force) {
-      confirm();
-    } else {
-      rl.question('⚠️ Are you sure you want to delete all configuration? (yes/no): ', (answer: string) => {
-        if (answer.toLowerCase() === 'yes' || answer.toLowerCase() === 'y') {
-          confirm();
-        } else {
-          console.log('❌ Cancelled');
-          rl.close();
-        }
-      });
-    }
+program
+  .command('doctor')
+  .description('Check HuiNet system status (coming soon)')
+  .action(() => {
+    console.log('❌ This command will be implemented in Phase 4');
+    console.log('   Current phase: Cleaning up codebase (Phase 1)');
   });
 
 // Parse command line arguments
