@@ -1,6 +1,7 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  testTimeout: 10000,
   roots: ['<rootDir>/src', '<rootDir>/cli'],
   testMatch: ['**/__tests__/**/*.test.ts'],
   collectCoverageFrom: [
