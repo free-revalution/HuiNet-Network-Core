@@ -3,6 +3,7 @@
  * Terminal UI for monitoring HuiNet daemon
  */
 
+import React from 'react';
 import { render } from 'ink';
 import { DaemonClient } from './client';
 import { MonitorApp } from './ui/components';
@@ -35,10 +36,10 @@ export async function startMonitor(daemonUrl?: string): Promise<void> {
     console.log(`Connected to HuiNet daemon at ${url}`);
 
     // Start TUI
-    const { waitUntilExit } = render(<MonitorApp daemonUrl={url} client={client} />);
+    const instance = render(<MonitorApp daemonUrl={url} client={client} />);
 
     // Wait for exit
-    await waitUntilExit();
+    await instance.waitUntilExit();
   } catch (error) {
     console.error(`Failed to start monitor: ${error instanceof Error ? error.message : error}`);
     process.exit(1);
