@@ -419,13 +419,17 @@ npm run build
 
 # Run in development mode
 npm run dev
+
+# Run CLI tool
+npm run cli
 ```
 
 ### Test Coverage
 
-- **Total Tests**: 282
+- **Total Tests**: 282 ✅
 - **Coverage**: Core modules, utilities, protocol handlers
 - **Test Framework**: Jest
+- **ESLint**: 0 errors, 35 warnings (unused imports only)
 
 ### Project Structure
 
