@@ -11,6 +11,7 @@ import { DaemonConfig, MachineInfo, MachineAnnouncement, AgentStatus } from './t
 import { loadConfig } from './config';
 import { AgentRegistry } from './registry';
 import { HTTPProxyPool } from './proxy';
+import { setupAdminAPI } from './api';
 
 /**
  * HuiNet Daemon - Manages AI agents on a single machine
@@ -29,6 +30,7 @@ export class HuiNetDaemon {
   private huinet: HuiNet | null = null;
   private registry!: AgentRegistry; // FIXED: Definite assignment assertion - initialized in start()
   private proxyPool!: HTTPProxyPool; // FIXED: Definite assignment assertion - initialized in start()
+  private apiServer: any = null; // Express server instance
 
   // FIXED: Removed 'running' and 'heartbeatInterval' properties per spec
 
@@ -108,6 +110,16 @@ export class HuiNetDaemon {
       await this.proxyPool.closeAll();
     }
 
+    // Close API server if it was initialized
+    if (this.apiServer) {
+      await new Promise<void>((resolve) => {
+        this.apiServer.close(() => {
+          resolve();
+        });
+      });
+      this.apiServer = null;
+    }
+
     console.log('Daemon stopped');
   }
 
@@ -125,11 +137,22 @@ export class HuiNetDaemon {
 
   /**
    * Setup admin API
-   * FIXED: Placeholder method added per spec
    */
   private setupAdminAPI(): void {
-    // Placeholder for admin API setup
-    console.log('Admin API setup placeholder');
+    const app = setupAdminAPI(this.registry, this.proxyPool, this.config, this.machineInfo);
+
+    // Start Express server
+    this.apiServer = app.listen(this.config.adminPort, () => {
+      console.log(`Admin API listening on port ${this.config.adminPort}`);
+    });
+
+    this.apiServer.on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`Port ${this.config.adminPort} is already in use`);
+      } else {
+        console.error('Admin API server error:', err);
+      }
+    });
   }
 
   /**

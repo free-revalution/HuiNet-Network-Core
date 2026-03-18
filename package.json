@@ -50,8 +50,10 @@
   },
   "homepage": "https://github.com/free-revalution/HuiNet-Network-Core#readme",
   "devDependencies": {
+    "@types/express": "5.0.6",
     "@types/jest": "^29.5.0",
     "@types/node": "^20.0.0",
+    "@types/supertest": "7.2.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.0.0",
@@ -63,8 +65,10 @@
   "dependencies": {
     "@types/ws": "^8.18.1",
     "commander": "^11.1.0",
+    "express": "5.2.1",
     "getmac": "^6.6.0",
     "multicast-dns": "^7.2.5",
+    "supertest": "7.2.2",
     "tweetnacl": "^1.0.3",
     "ws": "^8.19.0"
   }
