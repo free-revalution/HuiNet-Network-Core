@@ -12,6 +12,7 @@ import { loadConfig } from './config';
 import { AgentRegistry } from './registry';
 import { HTTPProxyPool } from './proxy';
 import { setupAdminAPI } from './api';
+import { P2PSync } from './p2p-sync';
 
 /**
  * HuiNet Daemon - Manages AI agents on a single machine
@@ -31,6 +32,7 @@ export class HuiNetDaemon {
   private registry!: AgentRegistry; // FIXED: Definite assignment assertion - initialized in start()
   private proxyPool!: HTTPProxyPool; // FIXED: Definite assignment assertion - initialized in start()
   private apiServer: any = null; // Express server instance
+  private p2pSync: P2PSync | null = null; // P2P synchronization
 
   // FIXED: Removed 'running' and 'heartbeatInterval' properties per spec
 
@@ -85,8 +87,14 @@ export class HuiNetDaemon {
       // Start HuiNet
       await this.huinet.start();
 
-      // Announce machine to network
-      this.announceMachine();
+      // Initialize P2P sync
+      this.p2pSync = new P2PSync(this.huinet, this.machineInfo, this.registry);
+
+      // Announce machine on startup
+      await this.p2pSync.announceMachine();
+
+      // Start heartbeat for machine
+      this.p2pSync.startMachineHeartbeat(this.config.heartbeatInterval);
 
       // Note: Event forwarding removed since we don't extend EventEmitter anymore
 
@@ -100,6 +108,12 @@ export class HuiNetDaemon {
    * Stop the daemon
    */
   async stop(): Promise<void> {
+    // Cleanup P2P sync if initialized
+    if (this.p2pSync) {
+      await this.p2pSync.cleanup();
+      this.p2pSync = null;
+    }
+
     if (this.huinet) {
       await this.huinet.stop();
       this.huinet = null;
@@ -181,22 +195,16 @@ export class HuiNetDaemon {
     }
   }
 
-  /**
-   * Announce machine to the P2P network
-   */
-  private announceMachine(): void {
-    const announcement: MachineAnnouncement = {
-      machineInfo: this.machineInfo,
-      agents: [], // No agents yet - will be populated in Task 1.2
-      timestamp: Date.now(),
-    };
-
-    console.log('Machine announced:', announcement);
-    // In future tasks, this will be broadcast to the P2P network
-  }
-
+  // FIXED: Removed announceMachine() method - functionality moved to P2PSync
   // FIXED: Removed methods per spec: isRunning(), getHuiNet(), getConfig(),
   // getRegistry(), getProxyPool(), startHeartbeat(), and extra private methods
+
+  /**
+   * Get P2P sync instance (for testing/admin access)
+   */
+  getP2PSync(): P2PSync | null {
+    return this.p2pSync;
+  }
 }
 
 // Export types and config
