@@ -38,7 +38,7 @@ export class Supervisor extends EventEmitter {
       // Spawn the agent process
       this.process = spawn(command, args, {
         env: processEnv,
-        stdio: 'pipe',
+        stdio: 'inherit',
       });
 
       // Handle process exit
@@ -68,7 +68,7 @@ export class Supervisor extends EventEmitter {
    * Start heartbeat loop
    * Sends heartbeat to daemon every 3 seconds
    */
-  private startHeartbeat(): void {
+  startHeartbeat(): void {
     // Send initial heartbeat
     this.sendHeartbeat();
 
@@ -81,7 +81,7 @@ export class Supervisor extends EventEmitter {
   /**
    * Stop heartbeat loop
    */
-  private stopHeartbeat(): void {
+  stopHeartbeat(): void {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
@@ -124,7 +124,7 @@ export class Supervisor extends EventEmitter {
   /**
    * Unregister agent from daemon
    */
-  private async unregister(): Promise<void> {
+  async unregister(): Promise<void> {
     try {
       const url = new URL(`/api/agents/${this.agentId}`, this.daemonUrl);
 

@@ -98,7 +98,7 @@ describe('Supervisor', () => {
 
       expect(spawn).toHaveBeenCalledWith('node', ['--version'], {
         env: expect.any(Object),
-        stdio: 'pipe',
+        stdio: 'inherit',
       });
     });
 
@@ -115,7 +115,7 @@ describe('Supervisor', () => {
           CUSTOM_VAR: 'custom-value',
           PATH: '/usr/bin',
         }),
-        stdio: 'pipe',
+        stdio: 'inherit',
       });
     });
 
@@ -129,7 +129,7 @@ describe('Supervisor', () => {
     });
 
     it('should start heartbeat after launch', async () => {
-      const startHeartbeatSpy = jest.spyOn(supervisor as any, 'startHeartbeat');
+      const startHeartbeatSpy = jest.spyOn(supervisor, 'startHeartbeat');
 
       await supervisor.launch('echo', ['hello'], {});
 
@@ -171,7 +171,7 @@ describe('Supervisor', () => {
 
   describe('heartbeat', () => {
     it('should start heartbeat after launch', async () => {
-      const startHeartbeatSpy = jest.spyOn(supervisor as any, 'startHeartbeat');
+      const startHeartbeatSpy = jest.spyOn(supervisor, 'startHeartbeat');
 
       await supervisor.launch('echo', ['hello'], {});
 
@@ -184,7 +184,7 @@ describe('Supervisor', () => {
     it('should stop heartbeat when stopped', async () => {
       await supervisor.launch('echo', ['hello'], {});
 
-      const stopHeartbeatSpy = jest.spyOn(supervisor as any, 'stopHeartbeat');
+      const stopHeartbeatSpy = jest.spyOn(supervisor, 'stopHeartbeat');
 
       await supervisor.stop();
 
@@ -197,7 +197,7 @@ describe('Supervisor', () => {
       await supervisor.launch('echo', ['hello'], {});
 
       // Manually trigger unregister (normally called on process exit)
-      await (supervisor as any).unregister();
+      await supervisor.unregister();
 
       // If we get here without error, the DELETE request succeeded
       expect(true).toBe(true);
@@ -208,7 +208,7 @@ describe('Supervisor', () => {
     it('should stop heartbeat and kill process', async () => {
       await supervisor.launch('echo', ['hello'], {});
 
-      const stopHeartbeatSpy = jest.spyOn(supervisor as any, 'stopHeartbeat');
+      const stopHeartbeatSpy = jest.spyOn(supervisor, 'stopHeartbeat');
 
       await supervisor.stop();
 
