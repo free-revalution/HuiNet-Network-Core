@@ -327,6 +327,32 @@ export class HuiNet extends EventEmitter {
     await this.connectionPool.send(targetNodeID, messageData);
   }
 
+  /**
+   * Broadcast a message to all connected nodes
+   *
+   * @param message - The message to broadcast
+   * @returns Promise that resolves when broadcast is complete
+   */
+  async broadcast(message: any): Promise<void> {
+    const connectedNodes = this.connectionPool.getConnectedNodes();
+    const messageData = JSON.stringify({
+      from: this.nodeID,
+      to: '*',
+      timestamp: Date.now(),
+      data: message
+    });
+
+    // Send to all connected nodes in parallel
+    const sendPromises = connectedNodes.map((nodeID: string) =>
+      this.connectionPool.send(nodeID, messageData).catch((err: Error) => {
+        // Silently fail for individual nodes, log error
+        console.error(`Failed to broadcast to ${nodeID}:`, err);
+      })
+    );
+
+    await Promise.all(sendPromises);
+  }
+
   async connectToNode(host: string, port: number, nodeID?: string): Promise<boolean> {
     const clientKey = `${host}:${port}`;
     const effectiveNodeID = nodeID || clientKey;

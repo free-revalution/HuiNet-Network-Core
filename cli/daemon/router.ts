@@ -56,7 +56,7 @@ export class MessageRouter extends EventEmitter {
 
   constructor(huiNet: HuiNet, config: RouterConfig) {
     super();
-    this.huinet = huinet;
+    this.huinet = huiNet;
     this.config = config;
     this.agentProxies = new Map();
 
@@ -143,7 +143,7 @@ export class MessageRouter extends EventEmitter {
         return this.handleHeartbeat(fromAgentId);
 
       case A2AMethod.TASK_EXECUTE:
-        return this.handleTaskExecute(fromAgentId, request.params, request.id);
+        return this.handleTaskExecute(fromAgentId, request.params, request.id ?? undefined);
 
       default:
         throw new Error(`Unknown method: ${method}`);

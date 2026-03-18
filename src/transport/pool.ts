@@ -131,6 +131,12 @@ export class ConnectionPool extends EventEmitter {
     return this.connections.size;
   }
 
+  getConnectedNodes(): NodeID[] {
+    return Array.from(this.connections.keys()).filter(nodeID =>
+      this.hasConnection(nodeID)
+    );
+  }
+
   getConnectionType(nodeID: NodeID): ConnectionType | undefined {
     return this.connections.get(nodeID)?.type;
   }

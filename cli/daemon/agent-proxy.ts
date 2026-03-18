@@ -7,8 +7,12 @@
 
 import { WebSocketServer, WebSocket } from 'ws';
 import { EventEmitter } from 'events';
-import type { AgentInfo, AgentProxyConfig, JSONRPCRequest } from '../types';
+import type { AgentInfo, JSONRPCRequest } from '../types';
+import type { AgentProxyConfig } from '../types';
 import { JSONRPCProtocol } from '../protocol/json-rpc';
+
+// Re-export AgentProxyConfig for use in other modules
+export type { AgentProxyConfig } from '../types';
 
 /**
  * Agent Proxy - manages WebSocket connection for a single agent
