@@ -1,2 +1,29 @@
 #!/usr/bin/env node
-require('../dist/cli/index.js');
+/**
+ * HuiNet CLI Entry Point
+ *
+ * This script checks if we're in development mode and uses ts-node directly,
+ * otherwise runs the compiled JavaScript from dist/.
+ */
+
+const path = require('path');
+const fs = require('fs');
+
+// Check if we're in development (source files exist)
+const srcPath = path.join(__dirname, '../cli/index.ts');
+const distPath = path.join(__dirname, '../dist/cli/index.js');
+
+if (fs.existsSync(srcPath) && !fs.existsSync(distPath)) {
+  // Development mode - use ts-node
+  require('ts-node').register({
+    transpileOnly: true,
+  });
+  require(srcPath);
+} else if (fs.existsSync(distPath)) {
+  // Production mode - use compiled JS
+  require(distPath);
+} else {
+  console.error('❌ HuiNet CLI not found!');
+  console.error('   Please run: npm run build');
+  process.exit(1);
+}
