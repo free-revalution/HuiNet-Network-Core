@@ -8,6 +8,17 @@ node_modules/
 dist/
 build/
 
+# TypeScript compilation outputs
+*.js
+*.d.ts
+*.d.ts.map
+*.js.map
+!**/cli/**/*.js  # Keep CLI JavaScript files
+src/**/*.js
+src/**/*.d.ts
+src/**/*.d.ts.map
+src/**/*.js.map
+
 # IDE
 .vscode/
 .idea/
@@ -36,3 +47,6 @@ docs/测试/
 .env
 .env.local
 specs/
+
+# Other projects
+daemon/
