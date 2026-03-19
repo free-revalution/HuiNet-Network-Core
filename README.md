@@ -665,6 +665,41 @@ For cross-network communication, configure bootstrap nodes in `~/.huinet/network
 
 ---
 
+## Related Projects
+
+HuiNet was inspired by existing P2P networking and agent communication solutions. While we solve similar problems, HuiNet focuses on simplicity and ease of use for AI agents:
+
+### P2P Networking Libraries
+- **[libp2p](https://github.com/libp2p/js-libp2p)** - A modular P2P network stack that provides production-ready implementations
+- **[IPFS](https://github.com/ipfs/ipfs)** - InterPlanetary File System, a peer-to-peer distributed file system
+
+### Agent Communication
+- **[p2p-agent-chat](https://github.com/Foadsf/p2p-agent-chat)** - Decentralized P2P communication tool for AI agents (Python)
+- **[Agent2Agent (A2A)](https://github.com/a2aproject/A2A)** - Open protocol enabling AI agents to communicate across frameworks
+- **[OpenAgents](https://github.com/openagents-org/openagents)** - Open network for AI agents to discover and collaborate
+- **[ACP Protocol](https://github.com/i-am-bee/acp)** - Open protocol for communication between AI agents
+
+### What Makes HuiNet Different
+- **Simplicity**: Focus on ease of use with a simple CLI
+- **Claude Code Integration**: Designed specifically for Claude Code and similar AI tools
+- **Learning Project**: Built as an educational project to understand distributed systems
+- **Lightweight**: Minimal dependencies and straightforward architecture
+
+> **Note**: HuiNet is a learning project and not intended for production use. For production P2P applications, consider using mature libraries like libp2p.
+
+---
+
+## Acknowledgments
+
+HuiNet was developed with AI-assisted coding using [Claude Code](https://claude.ai/code). The project serves as a learning experience in distributed systems and P2P networking.
+
+Special thanks to the authors of:
+- [multicast-dns](https://github.com/mafintosh/multicast-dns) - mDNS implementation
+- [tweetnacl](https://github.com/dchest/tweetnacl-js) - Ed25519 cryptography library
+- [ws](https://github.com/websockets/ws) - WebSocket library
+
+---
+
 ## Contributing
 
 Contributions are welcome! Please:
