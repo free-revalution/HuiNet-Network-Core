@@ -198,6 +198,20 @@ export async function stopHubDaemon(): Promise<void> {
   }
 }
 
+/**
+ * Ensure hub is running; auto-start daemon if needed.
+ */
+export async function ensureHubRunning(options?: {
+  quiet?: boolean;
+}): Promise<boolean> {
+  if (await isHubReachable()) return true;
+  if (!options?.quiet) {
+    console.log('Hub not running — starting…');
+  }
+  await startHubDaemon();
+  return isHubReachable();
+}
+
 export async function printHubStatus(): Promise<void> {
   const paths = getHuiNetPaths();
   const pid = readPid(paths);

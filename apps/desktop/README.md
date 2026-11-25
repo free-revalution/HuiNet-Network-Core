@@ -1,29 +1,35 @@
 # HuiNet Desktop
 
-CC Switch–style control console for the local hub.
+Electron shell + fabric UI for the local Hub.
 
-## Web UI (default)
+## Run
 
-Built assets are served by the hub at `http://127.0.0.1:19527/` after:
+From the **repo root**:
 
 ```bash
-npm run build
-# from repo root:
-npm run build:ui
-huinet start
+npm run build && npm run build:ui
 huinet app
 ```
 
-## Tauri shell (tray)
+The shell starts the Hub if needed, opens a frameless window (`hiddenInset` traffic lights on macOS), and loads `http://127.0.0.1:19527/`.
 
-Requires a recent Rust toolchain (Cargo with edition 2024 support). Then:
+```bash
+huinet app --quit          # quit desktop
+huinet app --quit --stop-hub
+huinet app --browser       # debug in system browser
+```
+
+## Develop UI only
 
 ```bash
 cd apps/desktop
-npm install
-npm run tauri dev
-# or
-npm run tauri build
+npm install                # uses .npmrc Electron mirror when needed
+npm run dev                # Vite on :1420
+npm run build              # → dist/ (served by Hub)
+npm run desktop            # Electron against local main.cjs
 ```
 
-If `tauri build` fails on crate edition features, upgrade Rust (`rustup update`) and retry.
+## Notes
+
+- Primary UX is the **network canvas** (draggable nodes, token-weighted edges), not a settings grid.
+- Tauri scaffolding remains under `src-tauri/` for a future native pack; day-to-day shell is Electron.

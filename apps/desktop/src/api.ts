@@ -33,6 +33,9 @@ export interface Agent {
   signals?: string[];
   online?: boolean;
   connected?: boolean;
+  a2aOpen?: boolean;
+  mcpSupported?: boolean;
+  mcpWired?: boolean;
 }
 
 export interface Memory {
@@ -52,7 +55,14 @@ export interface BusMessage {
   to: string;
   type: string;
   payload: unknown;
+  tokens?: number;
   timestamp: number;
+}
+
+export interface BusSnapshot {
+  messages: BusMessage[];
+  tokenTotals?: Record<string, number>;
+  tokenSum?: number;
 }
 
 export interface HubStatus {
@@ -62,12 +72,43 @@ export interface HubStatus {
   connectedAgents: number;
   inventoryCount: number;
   memoryCount: number;
+  pid?: number;
+}
+
+export interface DoctorResult {
+  ok: boolean;
+  checks: Array<{ name: string; pass: boolean; detail?: string }>;
 }
 
 export const api = {
   status: () => request<HubStatus>('/api/status'),
+  doctor: () => request<DoctorResult>('/api/doctor'),
   agents: () => request<{ agents: Agent[] }>('/api/agents'),
-  scan: () => request<{ agents: Agent[] }>('/api/agents/scan', { method: 'POST', json: {} }),
+  scan: () =>
+    request<{ agents: Agent[] }>('/api/agents/scan', {
+      method: 'POST',
+      json: {},
+    }),
+  setA2aOpen: (agentId: string, open: boolean) =>
+    request<{
+      agent: Agent;
+      message: string;
+      wire?: { message: string; file: string };
+    }>(`/api/agents/${encodeURIComponent(agentId)}/a2a`, {
+      method: 'POST',
+      json: { open },
+    }),
+  connectAll: () =>
+    request<{
+      wired: Array<{ target: string; message: string; file: string }>;
+      opened: string[];
+      agents: Agent[];
+    }>('/api/agents/connect-all', { method: 'POST', json: {} }),
+  disconnectAll: () =>
+    request<{ closed: string[]; agents: Agent[] }>(
+      '/api/agents/disconnect-all',
+      { method: 'POST', json: {} }
+    ),
   memories: (q?: string) =>
     request<{ memories: Memory[] }>(
       q ? `/api/context?q=${encodeURIComponent(q)}` : '/api/context'
@@ -82,15 +123,35 @@ export const api = {
       method: 'POST',
       json: {},
     }),
-  upsert: (body: Partial<Memory> & { title: string; body: string; kind: string }) =>
-    request<Memory>('/api/context', { method: 'POST', json: body }),
-  busMessages: () => request<{ messages: BusMessage[] }>('/api/bus/messages'),
-  send: (to: string, message: string) =>
+  upsert: (body: {
+    kind: string;
+    title: string;
+    body: string;
+    scope?: string;
+    project?: string;
+    tags?: string[];
+  }) => request<Memory>('/api/context', { method: 'POST', json: body }),
+  deleteMemory: (id: string) =>
+    request<{ deleted: string }>(`/api/context/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+  busMessages: () => request<BusSnapshot>('/api/bus/messages'),
+  send: (to: string, message: string, tokens?: number) =>
     request('/api/bus/send', {
       method: 'POST',
-      json: { to, from: 'ui', type: 'chat', payload: { text: message } },
+      json: {
+        to,
+        from: 'ui',
+        type: 'chat',
+        payload: { text: message },
+        tokens,
+      },
     }),
   mcpConfig: () => request<Record<string, unknown>>('/api/mcp/config'),
+  mcpStatus: () =>
+    request<{ claude: boolean; cursor: boolean; codex: boolean }>(
+      '/api/mcp/status'
+    ),
 };
 
 export { API_BASE };

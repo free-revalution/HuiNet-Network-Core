@@ -1,6 +1,8 @@
 # Agent Integration Guide
 
-HuiNet 在本机以 **Local Hub** 形式运行。Agent 有两种接入方式：MCP（推荐）与原生 WebSocket JSON-RPC。
+Plug any local agent into the HuiNet fabric.
+
+The Hub runs only on this machine (`127.0.0.1`). Prefer **MCP** for Claude Code / Cursor / Codex and friends; use **WebSocket JSON-RPC** when you control the agent runtime yourself.
 
 ## 1. MCP（兼容大多数 Agent）
 

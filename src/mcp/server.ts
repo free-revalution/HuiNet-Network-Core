@@ -157,8 +157,14 @@ async function callTool(
   args: Record<string, unknown>
 ): Promise<unknown> {
   switch (name) {
-    case 'list_agents':
-      return hubFetch('/api/agents');
+    case 'list_agents': {
+      const data = (await hubFetch('/api/agents')) as {
+        agents: Array<{ a2aOpen?: boolean; id: string }>;
+      };
+      return {
+        agents: (data.agents || []).filter((a) => a.a2aOpen),
+      };
+    }
     case 'get_agent_info':
       return hubFetch(`/api/agents/${encodeURIComponent(String(args.agentId))}`);
     case 'send_message':

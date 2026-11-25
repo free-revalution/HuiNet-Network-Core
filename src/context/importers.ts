@@ -45,9 +45,30 @@ function summarizeText(text: string, max = 800): string {
   return cleaned.slice(0, max) + '…';
 }
 
+function extractContent(row: Record<string, unknown>): string {
+  let content =
+    (row.content as string) ||
+    ((row.message as Record<string, unknown>)?.content as string) ||
+    (row.text as string) ||
+    '';
+
+  if (Array.isArray(content)) {
+    content = content
+      .map((c: unknown) => {
+        if (typeof c === 'string') return c;
+        if (c && typeof c === 'object' && 'text' in (c as object)) {
+          return String((c as { text: string }).text);
+        }
+        return '';
+      })
+      .join('\n');
+  }
+  return typeof content === 'string' ? content : '';
+}
+
 function extractUserAssistantPairs(
   lines: Array<Record<string, unknown>>
-): { title: string; body: string } | null {
+): { title: string; body: string; highlights: string[] } | null {
   const userMsgs: string[] = [];
   const assistantMsgs: string[] = [];
 
@@ -56,43 +77,76 @@ function extractUserAssistantPairs(
       (row.role as string) ||
       (row.type as string) ||
       ((row.message as Record<string, unknown>)?.role as string);
-    let content =
-      (row.content as string) ||
-      ((row.message as Record<string, unknown>)?.content as string) ||
-      '';
-
-    if (Array.isArray(content)) {
-      content = content
-        .map((c: unknown) => {
-          if (typeof c === 'string') return c;
-          if (c && typeof c === 'object' && 'text' in (c as object)) {
-            return String((c as { text: string }).text);
-          }
-          return '';
-        })
-        .join('\n');
-    }
-
-    if (!content || typeof content !== 'string') continue;
+    const content = extractContent(row);
+    if (!content) continue;
     const r = (role || '').toLowerCase();
-    if (r.includes('user') || r === 'human') userMsgs.push(content);
-    if (r.includes('assistant') || r === 'ai') assistantMsgs.push(content);
+    if (r.includes('user') || r === 'human' || r === 'user_message') {
+      userMsgs.push(content);
+    }
+    if (
+      r.includes('assistant') ||
+      r === 'ai' ||
+      r === 'assistant_message' ||
+      r.includes('agent')
+    ) {
+      assistantMsgs.push(content);
+    }
   }
 
   if (userMsgs.length === 0 && assistantMsgs.length === 0) return null;
 
   const title = summarizeText(userMsgs[0] || assistantMsgs[0] || 'Session', 80);
+  const lastUser = userMsgs[userMsgs.length - 1];
+  const lastAssistant = assistantMsgs[assistantMsgs.length - 1];
+  const highlights = pickHighlights([...userMsgs, ...assistantMsgs]);
+
   const body = [
-    userMsgs[0] ? `User: ${summarizeText(userMsgs[0], 400)}` : '',
-    assistantMsgs[0]
-      ? `Assistant: ${summarizeText(assistantMsgs[0], 400)}`
+    userMsgs[0] ? `First user: ${summarizeText(userMsgs[0], 350)}` : '',
+    lastUser && lastUser !== userMsgs[0]
+      ? `Latest user: ${summarizeText(lastUser, 350)}`
+      : '',
+    lastAssistant
+      ? `Latest assistant: ${summarizeText(lastAssistant, 450)}`
+      : '',
+    highlights.length
+      ? `Highlights:\n- ${highlights.map((h) => summarizeText(h, 160)).join('\n- ')}`
       : '',
     `Turns: ~${Math.max(userMsgs.length, assistantMsgs.length)}`,
   ]
     .filter(Boolean)
     .join('\n');
 
-  return { title, body };
+  return { title, body, highlights };
+}
+
+function pickHighlights(texts: string[]): string[] {
+  const keywords =
+    /\b(decid(?:e|ed|ing)|we should|let's|必须|决定|方案|改用|改成|prefer|instead of|do not|不要|迁移|refactor)\b/i;
+  const out: string[] = [];
+  for (const t of texts) {
+    if (keywords.test(t)) {
+      out.push(t);
+      if (out.length >= 3) break;
+    }
+  }
+  return out;
+}
+
+/** Claude stores project dirs like -Users-name-dev-HuiNet */
+function inferProjectFromPath(filePath: string): string | undefined {
+  const parts = filePath.split(path.sep);
+  const projectsIdx = parts.findIndex((p) => p === 'projects');
+  if (projectsIdx >= 0 && parts[projectsIdx + 1]) {
+    const raw = parts[projectsIdx + 1];
+    const slug = raw
+      .replace(/^-/, '')
+      .split('-')
+      .slice(-2)
+      .join('-')
+      .toLowerCase();
+    if (slug && slug.length > 1) return slug.slice(0, 64);
+  }
+  return undefined;
 }
 
 function importClaudeJsonl(
@@ -121,17 +175,33 @@ function importClaudeJsonl(
         skipped++;
         continue;
       }
+      const projectSlug = project || inferProjectFromPath(f);
       const entry = store.upsert({
         kind: 'thread_summary',
-        scope: project ? 'project' : 'global',
-        project,
+        scope: projectSlug ? 'project' : 'global',
+        project: projectSlug,
         title: summary.title,
         body: summary.body,
-        tags: ['import', 'claude-code'],
+        tags: ['import', 'claude-code', ...(summary.highlights.length ? ['has-highlights'] : [])],
         agentId: 'claude-code',
         source: { agentId: 'claude-code', path: f },
       });
       memories.push(entry);
+
+      for (const h of summary.highlights.slice(0, 2)) {
+        memories.push(
+          store.upsert({
+            kind: 'decision',
+            scope: projectSlug ? 'project' : 'global',
+            project: projectSlug,
+            title: summarizeText(h, 60),
+            body: summarizeText(h, 500),
+            tags: ['import', 'claude-code', 'auto-highlight'],
+            agentId: 'claude-code',
+            source: { agentId: 'claude-code', path: f },
+          })
+        );
+      }
     } catch {
       skipped++;
     }
@@ -175,11 +245,29 @@ function importCodexJsonl(
         project,
         title: summary.title,
         body: summary.body,
-        tags: ['import', 'codex'],
+        tags: [
+          'import',
+          'codex',
+          ...(summary.highlights.length ? ['has-highlights'] : []),
+        ],
         agentId: 'codex',
         source: { agentId: 'codex', path: f },
       });
       memories.push(entry);
+      for (const h of summary.highlights.slice(0, 2)) {
+        memories.push(
+          store.upsert({
+            kind: 'decision',
+            scope: project ? 'project' : 'global',
+            project,
+            title: summarizeText(h, 60),
+            body: summarizeText(h, 500),
+            tags: ['import', 'codex', 'auto-highlight'],
+            agentId: 'codex',
+            source: { agentId: 'codex', path: f },
+          })
+        );
+      }
     } catch {
       skipped++;
     }

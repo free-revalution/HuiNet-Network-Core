@@ -5,20 +5,25 @@
 
 import { Command } from 'commander';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { createConfigManager } from './config/agent-config';
 import {
   httpJson,
   isHubReachable,
+  ensureHubRunning,
   printHubStatus,
   runHubForeground,
   startHubDaemon,
   stopHubDaemon,
 } from './hub/lifecycle';
 import { createAgentScanner } from '../src/inventory';
-import { createContextStore, importSessions } from '../src/context';
 import { loadHubConfig, getHuiNetPaths, ensureHuiNetDirs } from '../src/paths';
+import {
+  agentIdToMcpTarget,
+  buildMcpSnippet,
+  isMcpWired,
+  wireMcpTarget,
+} from '../src/mcp/install';
 
 const program = new Command();
 
@@ -67,15 +72,10 @@ agents
   .command('scan')
   .description('Scan this machine for installed AI agents')
   .action(async () => {
-    if (await isHubReachable()) {
-      const snap = await httpJson<{
-        agents: Array<{ id: string; name: string; presence: string; binaryPath?: string }>;
-      }>('/api/agents/scan', { method: 'POST', body: {} });
-      printAgentTable(snap.agents);
-      return;
-    }
-    const scanner = createAgentScanner();
-    const snap = await scanner.scan();
+    await ensureHubRunning();
+    const snap = await httpJson<{
+      agents: Array<{ id: string; name: string; presence: string; binaryPath?: string }>;
+    }>('/api/agents/scan', { method: 'POST', body: {} });
     printAgentTable(snap.agents);
   });
 
@@ -83,42 +83,97 @@ agents
   .command('list')
   .description('List discovered agents')
   .action(async () => {
-    if (await isHubReachable()) {
-      const data = await httpJson<{ agents: Array<Record<string, unknown>> }>(
-        '/api/agents'
-      );
-      printAgentTable(data.agents as never);
-      return;
-    }
-    const scanner = createAgentScanner();
-    const cached = scanner.loadCached() || (await scanner.scan());
-    printAgentTable(cached.agents);
+    await ensureHubRunning();
+    const data = await httpJson<{ agents: Array<Record<string, unknown>> }>(
+      '/api/agents'
+    );
+    printAgentTable(data.agents as never);
   });
 
 agents
   .command('show <id>')
   .description('Show details for one agent')
   .action(async (id: string) => {
-    if (await isHubReachable()) {
-      try {
-        const agent = await httpJson<Record<string, unknown>>(
-          `/api/agents/${encodeURIComponent(id)}`
-        );
-        console.log(JSON.stringify(agent, null, 2));
-        return;
-      } catch {
-        console.error(`Agent "${id}" not found.`);
-        process.exit(1);
-      }
-    }
-    const scanner = createAgentScanner();
-    await scanner.scan();
-    const agent = scanner.getAgent(id);
-    if (!agent) {
-      console.error(`Agent "${id}" not found. Run: huinet agents scan`);
+    await ensureHubRunning();
+    try {
+      const agent = await httpJson<Record<string, unknown>>(
+        `/api/agents/${encodeURIComponent(id)}`
+      );
+      const mcpTarget = agentIdToMcpTarget(id);
+      console.log(
+        JSON.stringify(
+          {
+            ...agent,
+            mcpWired: mcpTarget ? isMcpWired(mcpTarget) : false,
+            mcpTarget,
+          },
+          null,
+          2
+        )
+      );
+    } catch {
+      console.error(`Agent "${id}" not found.`);
       process.exit(1);
     }
-    console.log(JSON.stringify(agent, null, 2));
+  });
+
+agents
+  .command('connect <id>')
+  .description('Open agent on A2A and wire MCP when supported')
+  .action(async (id: string) => {
+    await ensureHubRunning();
+    try {
+      const result = await httpJson<{
+        message: string;
+        wire?: { file: string };
+      }>(`/api/agents/${encodeURIComponent(id)}/a2a`, {
+        method: 'POST',
+        body: { open: true },
+      });
+      console.log(`✓ ${result.message}`);
+      if (result.wire?.file) console.log(`  MCP: ${result.wire.file}`);
+    } catch (err) {
+      console.error(`✗ ${(err as Error).message}`);
+      process.exit(1);
+    }
+  });
+
+agents
+  .command('disconnect <id>')
+  .description('Close agent on A2A network')
+  .action(async (id: string) => {
+    await ensureHubRunning();
+    const result = await httpJson<{ message: string }>(
+      `/api/agents/${encodeURIComponent(id)}/a2a`,
+      { method: 'POST', body: { open: false } }
+    );
+    console.log(`✓ ${result.message}`);
+  });
+
+agents
+  .command('connect-all')
+  .description('Open all discovered agents on A2A and wire MCP where possible')
+  .action(async () => {
+    await ensureHubRunning();
+    const result = await httpJson<{
+      opened: string[];
+      wired: Array<{ target: string }>;
+    }>('/api/agents/connect-all', { method: 'POST', body: {} });
+    console.log(
+      `✓ Opened ${result.opened.length} on A2A, wired MCP for ${result.wired.length}`
+    );
+  });
+
+agents
+  .command('disconnect-all')
+  .description('Close all agents on A2A network')
+  .action(async () => {
+    await ensureHubRunning();
+    const result = await httpJson<{ closed: string[] }>(
+      '/api/agents/disconnect-all',
+      { method: 'POST', body: {} }
+    );
+    console.log(`✓ Closed ${result.closed.length} agents on A2A`);
   });
 
 agents
@@ -157,6 +212,8 @@ function printAgentTable(
     presence: string;
     binaryPath?: string;
     online?: boolean;
+    a2aOpen?: boolean;
+    mcpWired?: boolean;
   }>
 ): void {
   if (!agentsList.length) {
@@ -165,15 +222,23 @@ function printAgentTable(
   }
   console.log('\nLocal Agents\n');
   for (const a of agentsList) {
-    const mark =
-      a.presence === 'connected' || a.online
+    const mark = a.a2aOpen
+      ? '\x1b[32m●\x1b[0m'
+      : a.presence === 'connected' || a.online
         ? '\x1b[32m●\x1b[0m'
         : a.presence === 'running'
           ? '\x1b[33m●\x1b[0m'
           : a.presence === 'installed'
             ? '\x1b[36m●\x1b[0m'
             : '○';
-    console.log(`  ${mark} ${a.name} (${a.id})  [${a.presence}]`);
+    const flags = [
+      a.presence,
+      a.a2aOpen ? 'a2a:open' : 'a2a:closed',
+      a.mcpWired ? 'mcp' : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
+    console.log(`  ${mark} ${a.name} (${a.id})  [${flags}]`);
     if (a.binaryPath) console.log(`      ${a.binaryPath}`);
   }
   console.log('');
@@ -189,20 +254,14 @@ context
   .description('List memory entries')
   .option('--project <slug>', 'Filter by project')
   .action(async (options) => {
-    if (await isHubReachable()) {
-      const q = options.project
-        ? `/api/context?project=${encodeURIComponent(options.project)}`
-        : '/api/context';
-      const data = await httpJson<{ memories: Array<Record<string, unknown>> }>(
-        q
-      );
-      for (const m of data.memories) {
-        console.log(`- [${m.kind}] ${m.title} (${m.id})`);
-      }
-      return;
-    }
-    const store = createContextStore();
-    for (const m of store.list({ project: options.project, limit: 50 })) {
+    await ensureHubRunning();
+    const q = options.project
+      ? `/api/context?project=${encodeURIComponent(options.project)}`
+      : '/api/context';
+    const data = await httpJson<{ memories: Array<Record<string, unknown>> }>(
+      q
+    );
+    for (const m of data.memories) {
       console.log(`- [${m.kind}] ${m.title} (${m.id})`);
     }
   });
@@ -211,14 +270,11 @@ context
   .command('search <query>')
   .description('Search shared memories')
   .action(async (query: string) => {
-    if (await isHubReachable()) {
-      const data = await httpJson<{ memories: Array<Record<string, unknown>> }>(
-        `/api/context?q=${encodeURIComponent(query)}`
-      );
-      console.log(JSON.stringify(data.memories, null, 2));
-      return;
-    }
-    console.log(JSON.stringify(createContextStore().search(query), null, 2));
+    await ensureHubRunning();
+    const data = await httpJson<{ memories: Array<Record<string, unknown>> }>(
+      `/api/context?q=${encodeURIComponent(query)}`
+    );
+    console.log(JSON.stringify(data.memories, null, 2));
   });
 
 context
@@ -230,24 +286,19 @@ context
   .option('--scope <scope>', 'global|project|agent-private', 'global')
   .option('--project <slug>', 'Project slug')
   .action(async (options) => {
-    const payload = {
-      kind: options.kind,
-      title: options.title,
-      body: options.body,
-      scope: options.scope,
-      project: options.project,
-      tags: [],
-    };
-    if (await isHubReachable()) {
-      const entry = await httpJson('/api/context', {
-        method: 'POST',
-        body: payload,
-      });
-      console.log('✓ Saved', (entry as { id: string }).id);
-      return;
-    }
-    const entry = createContextStore().upsert(payload as never);
-    console.log('✓ Saved', entry.id);
+    await ensureHubRunning();
+    const entry = await httpJson('/api/context', {
+      method: 'POST',
+      body: {
+        kind: options.kind,
+        title: options.title,
+        body: options.body,
+        scope: options.scope,
+        project: options.project,
+        tags: [],
+      },
+    });
+    console.log('✓ Saved', (entry as { id: string }).id);
   });
 
 context
@@ -257,27 +308,18 @@ context
   .option('--project <slug>', 'Project scope')
   .option('--limit <n>', 'Max sessions', '20')
   .action(async (options) => {
-    const from = options.from as 'claude' | 'codex' | 'cursor';
-    if (await isHubReachable()) {
-      const result = await httpJson<{ imported: number; skipped: number }>(
-        '/api/context/import',
-        {
-          method: 'POST',
-          body: {
-            from,
-            project: options.project,
-            limit: parseInt(options.limit, 10),
-          },
-        }
-      );
-      console.log(`✓ Imported ${result.imported} (skipped ${result.skipped})`);
-      return;
-    }
-    const result = await importSessions({
-      from,
-      project: options.project,
-      limit: parseInt(options.limit, 10),
-    });
+    await ensureHubRunning();
+    const result = await httpJson<{ imported: number; skipped: number }>(
+      '/api/context/import',
+      {
+        method: 'POST',
+        body: {
+          from: options.from,
+          project: options.project,
+          limit: parseInt(options.limit, 10),
+        },
+      }
+    );
     console.log(`✓ Imported ${result.imported} (skipped ${result.skipped})`);
   });
 
@@ -288,18 +330,14 @@ context
   .option('--project <slug>', 'Project scope')
   .option('--out <file>', 'Write markdown to file')
   .action(async (options) => {
-    let pkg: { markdown: string; memories: unknown[] };
-    if (await isHubReachable()) {
-      pkg = await httpJson('/api/context/migrate', {
+    await ensureHubRunning();
+    const pkg = await httpJson<{ markdown: string; memories: unknown[] }>(
+      '/api/context/migrate',
+      {
         method: 'POST',
         body: { targetAgent: options.to, project: options.project },
-      });
-    } else {
-      pkg = createContextStore().migrate({
-        targetAgent: options.to,
-        project: options.project,
-      });
-    }
+      }
+    );
     if (options.out) {
       fs.writeFileSync(options.out, pkg.markdown, 'utf-8');
       console.log(`✓ Wrote ${options.out} (${pkg.memories.length} memories)`);
@@ -368,13 +406,17 @@ mcpCmd
   .option('--target <agent>', 'claude|cursor|codex|all', 'all')
   .option('--write', 'Write into agent config files when possible')
   .action(async (options) => {
-    const snippet = await getMcpSnippet();
+    await ensureHubRunning();
+    const snippet = await httpJson('/api/mcp/config').catch(() =>
+      buildMcpSnippet()
+    );
     console.log('\nMCP config snippet:\n');
     console.log(JSON.stringify(snippet, null, 2));
     console.log('');
 
     if (!options.write) {
       console.log('Pass --write to merge into Claude/Cursor config files.');
+      console.log('Or: huinet agents connect claude-code');
       return;
     }
 
@@ -385,114 +427,137 @@ mcpCmd
 
     for (const t of targets) {
       try {
-        await writeMcpConfig(t, snippet);
-        console.log(`✓ Wrote MCP config for ${t}`);
+        const result = await httpJson<{ message: string; file: string }>(
+          '/api/mcp/wire',
+          { method: 'POST', body: { target: t } }
+        ).catch(() => wireMcpTarget(t));
+        console.log(`✓ ${result.message} → ${result.file}`);
       } catch (err) {
         console.warn(`⚠ ${t}: ${(err as Error).message}`);
       }
     }
   });
 
-async function getMcpSnippet(): Promise<Record<string, unknown>> {
-  if (await isHubReachable()) {
-    return httpJson('/api/mcp/config');
-  }
-  const config = loadHubConfig();
-  const script = path.resolve(__dirname, '../mcp/server.js');
-  const alt = path.resolve(process.cwd(), 'dist/mcp/server.js');
-  const serverPath = fs.existsSync(script) ? script : alt;
-  return {
-    mcpServers: {
-      huinet: {
-        command: 'node',
-        args: [serverPath],
-        env: {
-          HUINET_HTTP: `http://${config.host}:${config.httpPort}`,
-        },
-      },
-    },
-  };
-}
-
-async function writeMcpConfig(
-  target: string,
-  snippet: Record<string, unknown>
-): Promise<void> {
-  const home = os.homedir();
-  const huinetServer = (snippet as { mcpServers: { huinet: unknown } })
-    .mcpServers.huinet;
-
-  if (target === 'claude') {
-    const file = path.join(home, '.claude.json');
-    let data: Record<string, unknown> = {};
-    if (fs.existsSync(file)) {
-      data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+mcpCmd
+  .command('status')
+  .description('Show which agents have HuiNet MCP wired')
+  .action(async () => {
+    const status = {
+      claude: isMcpWired('claude'),
+      cursor: isMcpWired('cursor'),
+      codex: isMcpWired('codex'),
+    };
+    console.log('\nMCP wiring\n');
+    for (const [k, v] of Object.entries(status)) {
+      console.log(`  ${v ? '\x1b[32m●\x1b[0m' : '○'} ${k}`);
     }
-    const mcp = (data.mcpServers as Record<string, unknown>) || {};
-    mcp.huinet = huinetServer;
-    data.mcpServers = mcp;
-    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf-8');
-    return;
-  }
-
-  if (target === 'cursor') {
-    const file = path.join(home, '.cursor', 'mcp.json');
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    let data: Record<string, unknown> = {};
-    if (fs.existsSync(file)) {
-      data = JSON.parse(fs.readFileSync(file, 'utf-8'));
-    }
-    const mcp = (data.mcpServers as Record<string, unknown>) || {};
-    mcp.huinet = huinetServer;
-    data.mcpServers = mcp;
-    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf-8');
-    return;
-  }
-
-  if (target === 'codex') {
-    const file = path.join(home, '.codex', 'config.toml');
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const block = `\n# HuiNet MCP\n[mcp_servers.huinet]\ncommand = "node"\nargs = ${JSON.stringify(
-      (huinetServer as { args: string[] }).args
-    )}\n`;
-    fs.appendFileSync(file, block, 'utf-8');
-    return;
-  }
-
-  throw new Error(`Unknown target ${target}`);
-}
+    console.log('');
+  });
 
 // =============================================================================
 // App
 // =============================================================================
 program
   .command('app')
-  .description('Open the HuiNet desktop UI')
-  .action(async () => {
-    await ensureHub();
+  .description('Launch HuiNet as a desktop window (Electron)')
+  .option('--browser', 'Open in system browser instead (debug)')
+  .option('--quit', 'Quit the HuiNet desktop app (and optionally stop hub with --stop-hub)')
+  .option('--stop-hub', 'Also stop the local hub when used with --quit')
+  .action(async (options) => {
+    const { spawn, execSync } = await import('child_process');
     const config = loadHubConfig();
     const url = `http://${config.host}:${config.httpPort}/`;
-    const tauriBin = path.join(
-      process.cwd(),
-      'apps/desktop/src-tauri/target/release/huinet-desktop'
-    );
-    const open =
-      process.platform === 'darwin'
-        ? 'open'
-        : process.platform === 'win32'
-          ? 'start'
-          : 'xdg-open';
 
-    if (fs.existsSync(tauriBin)) {
-      const { spawn } = await import('child_process');
-      spawn(tauriBin, [], { detached: true, stdio: 'ignore' }).unref();
-      console.log('✓ Launched HuiNet desktop app');
+    if (options.quit) {
+      const desktopDir = path.resolve(__dirname, '../../apps/desktop');
+      const pidFile = path.join(
+        process.env.HOME || process.env.USERPROFILE || '',
+        '.huinet',
+        'desktop.pid'
+      );
+      try {
+        if (fs.existsSync(pidFile)) {
+          const pid = parseInt(fs.readFileSync(pidFile, 'utf-8').trim(), 10);
+          if (pid) {
+            try {
+              process.kill(pid, 'SIGTERM');
+            } catch {
+              // already gone
+            }
+          }
+          fs.unlinkSync(pidFile);
+        }
+      } catch {
+        // ignore
+      }
+      try {
+        execSync(`pkill -f "${desktopDir}/node_modules/electron" || true`, {
+          stdio: 'ignore',
+        });
+      } catch {
+        // ignore
+      }
+      console.log('✓ HuiNet desktop quit signal sent');
+      if (options.stopHub) {
+        await stopHubDaemon();
+      } else {
+        console.log('  Hub still running. Stop with: huinet stop');
+      }
       return;
     }
 
-    const { spawn } = await import('child_process');
-    spawn(open, [url], { detached: true, stdio: 'ignore' }).unref();
-    console.log(`✓ Opened ${url}`);
+    if (options.browser) {
+      await ensureHub();
+      const open =
+        process.platform === 'darwin'
+          ? 'open'
+          : process.platform === 'win32'
+            ? 'start'
+            : 'xdg-open';
+      spawn(open, [url], { detached: true, stdio: 'ignore' }).unref();
+      console.log(`✓ Opened browser ${url}`);
+      return;
+    }
+
+    const desktopDir = path.resolve(__dirname, '../../apps/desktop');
+    const electronBin = path.join(
+      desktopDir,
+      'node_modules/.bin/electron' + (process.platform === 'win32' ? '.cmd' : '')
+    );
+    const mainJs = path.join(desktopDir, 'electron/main.cjs');
+
+    if (!fs.existsSync(mainJs)) {
+      console.error('Desktop shell missing. Expected apps/desktop/electron/main.cjs');
+      process.exit(1);
+    }
+    if (!fs.existsSync(electronBin)) {
+      console.error('Electron not installed. Run: npm install --prefix apps/desktop');
+      process.exit(1);
+    }
+
+    // Ensure UI build exists
+    const uiIndex = path.join(desktopDir, 'dist/index.html');
+    if (!fs.existsSync(uiIndex)) {
+      console.log('Building UI…');
+      const build = spawn(
+        process.platform === 'win32' ? 'npm.cmd' : 'npm',
+        ['run', 'build'],
+        { cwd: desktopDir, stdio: 'inherit' }
+      );
+      await new Promise<void>((resolve, reject) => {
+        build.on('exit', (code) =>
+          code === 0 ? resolve() : reject(new Error('UI build failed'))
+        );
+      });
+    }
+
+    spawn(electronBin, ['.'], {
+      cwd: desktopDir,
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env },
+    }).unref();
+    console.log('✓ Launched HuiNet desktop app');
   });
 
 // =============================================================================
@@ -513,7 +578,12 @@ program
       pass: fs.existsSync(getHuiNetPaths().root),
     });
 
-    const reachable = await isHubReachable();
+    let reachable = await isHubReachable();
+    if (!reachable) {
+      console.log('  Hub offline — attempting auto-start…');
+      await ensureHubRunning({ quiet: true });
+      reachable = await isHubReachable();
+    }
     checks.push({ name: 'Hub HTTP reachable', pass: reachable });
 
     const scanner = createAgentScanner();
@@ -522,6 +592,9 @@ program
       name: `Agents discovered: ${snap.agents.length}`,
       pass: snap.agents.length > 0,
     });
+    checks.push({ name: 'MCP wired: Claude', pass: isMcpWired('claude') });
+    checks.push({ name: 'MCP wired: Cursor', pass: isMcpWired('cursor') });
+    checks.push({ name: 'MCP wired: Codex', pass: isMcpWired('codex') });
 
     for (const check of checks) {
       const icon = check.pass ? '✓' : '✗';
@@ -532,9 +605,11 @@ program
   });
 
 async function ensureHub(): Promise<void> {
-  if (await isHubReachable()) return;
-  console.error('Hub is not running. Start it with: huinet start');
-  process.exit(1);
+  const ok = await ensureHubRunning();
+  if (!ok) {
+    console.error('Failed to start HuiNet hub.');
+    process.exit(1);
+  }
 }
 
 program.action(() => {

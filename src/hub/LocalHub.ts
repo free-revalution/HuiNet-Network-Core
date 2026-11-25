@@ -17,9 +17,41 @@ import {
 } from '../paths';
 import { createAgentScanner, type AgentScanner } from '../inventory';
 import { createContextStore, importSessions, type ContextStore } from '../context';
+import {
+  agentIdToMcpTarget,
+  buildMcpSnippet,
+  isMcpWired,
+  wireMcpTarget,
+} from '../mcp/install';
 import { AgentDirectory } from './directory';
 import { MessageBus, type BusMessage } from './bus';
+import {
+  isA2aOpen,
+  loadNetworkAccess,
+  setA2aOpen,
+  setManyA2aOpen,
+} from './network-access';
 import { HubRPC, A2AMethod, type JSONRPCRequest } from './rpc';
+
+export interface EnrichedAgent {
+  id: string;
+  name: string;
+  presence: string;
+  binaryPath?: string;
+  version?: string;
+  homeDir?: string;
+  sessionDir?: string;
+  capabilities?: string[];
+  signals?: string[];
+  online?: boolean;
+  connected?: boolean;
+  /** Open to same-machine A2A fabric */
+  a2aOpen: boolean;
+  /** Can install HuiNet MCP */
+  mcpSupported: boolean;
+  /** MCP config already written */
+  mcpWired: boolean;
+}
 
 export interface LocalHubStatus {
   running: boolean;
@@ -204,6 +236,26 @@ export class LocalHub extends EventEmitter {
     };
   }
 
+  enrichAgents(): EnrichedAgent[] {
+    const access = loadNetworkAccess(this.paths);
+    return this.directory.listAll().map((a) => {
+      const mcpTarget = agentIdToMcpTarget(a.id);
+      return {
+        ...a,
+        a2aOpen: Boolean(access.a2aOpen[a.id]),
+        mcpSupported: mcpTarget !== null,
+        mcpWired: mcpTarget ? isMcpWired(mcpTarget) : false,
+      };
+    });
+  }
+
+  /** Agents visible on the A2A fabric (open switch on) */
+  listA2aPeers(excludeId?: string): EnrichedAgent[] {
+    return this.enrichAgents().filter(
+      (a) => a.a2aOpen && a.id !== excludeId
+    );
+  }
+
   private cors(res: http.ServerResponse): void {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
@@ -254,13 +306,13 @@ export class LocalHub extends EventEmitter {
       }
 
       if (p === '/api/agents' && req.method === 'GET') {
-        this.json(res, 200, { agents: this.directory.listAll() });
+        this.json(res, 200, { agents: this.enrichAgents() });
         return;
       }
 
       if (p === '/api/agents/scan' && req.method === 'POST') {
-        const snap = await this.refreshInventory();
-        this.json(res, 200, snap);
+        await this.refreshInventory();
+        this.json(res, 200, { agents: this.enrichAgents() });
         return;
       }
 
@@ -269,9 +321,50 @@ export class LocalHub extends EventEmitter {
         return;
       }
 
+      if (p === '/api/agents/connect-all' && req.method === 'POST') {
+        const results = this.connectAllSupported();
+        this.json(res, 200, results);
+        return;
+      }
+
+      if (p === '/api/agents/disconnect-all' && req.method === 'POST') {
+        this.json(res, 200, this.disconnectAll());
+        return;
+      }
+
+      // POST /api/agents/:id/a2a  { open: boolean }
+      const a2aMatch = p.match(/^\/api\/agents\/([^/]+)\/a2a$/);
+      if (a2aMatch && req.method === 'POST') {
+        const id = decodeURIComponent(a2aMatch[1]);
+        const body = JSON.parse(await this.readBody(req)) as { open?: boolean };
+        const open = Boolean(body.open);
+        const mcpTarget = agentIdToMcpTarget(id);
+
+        let wireResult = null;
+        if (open && mcpTarget) {
+          wireResult = wireMcpTarget(
+            mcpTarget,
+            buildMcpSnippet(this.token).mcpServers.huinet
+          );
+        }
+        setA2aOpen(id, open, this.paths);
+
+        const agent = this.enrichAgents().find((a) => a.id === id);
+        this.json(res, 200, {
+          agent,
+          wire: wireResult,
+          message: open
+            ? mcpTarget
+              ? 'Opened on A2A and MCP wired'
+              : 'Opened on A2A (no MCP adapter for this agent)'
+            : 'Closed on A2A network',
+        });
+        return;
+      }
+
       if (p.startsWith('/api/agents/') && req.method === 'GET') {
         const id = decodeURIComponent(p.slice('/api/agents/'.length));
-        const agent = this.directory.listAll().find((a) => a.id === id);
+        const agent = this.enrichAgents().find((a) => a.id === id);
         if (!agent) {
           this.json(res, 404, { error: 'not found' });
           return;
@@ -281,17 +374,34 @@ export class LocalHub extends EventEmitter {
       }
 
       if (p === '/api/bus/messages' && req.method === 'GET') {
-        this.json(res, 200, { messages: this.bus.getRecent(100) });
+        const messages = this.bus.getRecent(100);
+        const byAgent: Record<string, number> = {};
+        for (const m of messages) {
+          const t = m.tokens || 0;
+          if (m.from && m.from !== 'ui' && m.from !== '*') {
+            byAgent[m.from] = (byAgent[m.from] || 0) + t;
+          }
+          if (m.to && m.to !== '*' && m.to !== 'hub' && m.to !== 'ui') {
+            byAgent[m.to] = (byAgent[m.to] || 0) + t;
+          }
+        }
+        this.json(res, 200, {
+          messages,
+          tokenTotals: byAgent,
+          tokenSum: messages.reduce((s, m) => s + (m.tokens || 0), 0),
+        });
         return;
       }
 
       if (p === '/api/bus/send' && req.method === 'POST') {
         const body = JSON.parse(await this.readBody(req));
+        const payload = body.payload ?? body.message ?? {};
         const msg = this.bus.publish({
           from: body.from || 'ui',
           to: body.to,
           type: body.type || 'chat',
-          payload: body.payload ?? body.message ?? {},
+          payload,
+          tokens: body.tokens,
         });
         this.json(res, 200, msg);
         return;
@@ -314,6 +424,14 @@ export class LocalHub extends EventEmitter {
         return;
       }
 
+      const ctxDel = p.match(/^\/api\/context\/([^/]+)$/);
+      if (ctxDel && req.method === 'DELETE') {
+        const id = decodeURIComponent(ctxDel[1]);
+        const ok = this.context.delete(id);
+        this.json(res, ok ? 200 : 404, ok ? { deleted: id } : { error: 'not found' });
+        return;
+      }
+
       if (p === '/api/context/import' && req.method === 'POST') {
         const body = JSON.parse(await this.readBody(req));
         const result = await importSessions({
@@ -333,8 +451,58 @@ export class LocalHub extends EventEmitter {
         return;
       }
 
+      if (p === '/api/doctor' && req.method === 'GET') {
+        this.json(res, 200, this.runDoctor());
+        return;
+      }
+
       if (p === '/api/mcp/config' && req.method === 'GET') {
         this.json(res, 200, this.buildMcpConfigSnippet());
+        return;
+      }
+
+      if (p === '/api/mcp/status' && req.method === 'GET') {
+        this.json(res, 200, {
+          claude: isMcpWired('claude'),
+          cursor: isMcpWired('cursor'),
+          codex: isMcpWired('codex'),
+        });
+        return;
+      }
+
+      if (p === '/api/mcp/wire' && req.method === 'POST') {
+        const body = JSON.parse(await this.readBody(req)) as {
+          target?: string;
+          agentId?: string;
+          openA2a?: boolean;
+        };
+        const target =
+          body.target ||
+          (body.agentId ? agentIdToMcpTarget(body.agentId) : null);
+        if (!target) {
+          this.json(res, 400, {
+            error: 'Provide target (claude|cursor|codex) or a supported agentId',
+          });
+          return;
+        }
+        const result = wireMcpTarget(
+          target,
+          buildMcpSnippet(this.token).mcpServers.huinet
+        );
+        const agentId = body.agentId || target;
+        if (body.openA2a !== false) {
+          setA2aOpen(
+            agentId === 'claude' ? 'claude-code' : agentId,
+            true,
+            this.paths
+          );
+        }
+        this.json(res, 200, result);
+        return;
+      }
+
+      if (p === '/api/mcp/wire-all' && req.method === 'POST') {
+        this.json(res, 200, this.connectAllSupported());
         return;
       }
 
@@ -402,24 +570,80 @@ export class LocalHub extends EventEmitter {
   }
 
   buildMcpConfigSnippet(): Record<string, unknown> {
-    const entry = require('path').join(
-      process.cwd(),
-      'dist/mcp/server.js'
-    );
-    const alt = require('path').join(__dirname, '../mcp/server.js');
-    const script = fs.existsSync(entry) ? entry : alt;
-    return {
-      mcpServers: {
-        huinet: {
-          command: 'node',
-          args: [script],
-          env: {
-            HUINET_HTTP: `http://${this.config.host}:${this.config.httpPort}`,
-            HUINET_TOKEN: this.token,
-          },
-        },
+    return buildMcpSnippet(this.token);
+  }
+
+  /**
+   * Wire MCP for every supported agent and open them on A2A.
+   */
+  connectAllSupported(): {
+    wired: ReturnType<typeof wireMcpTarget>[];
+    opened: string[];
+    agents: EnrichedAgent[];
+  } {
+    const spec = buildMcpSnippet(this.token).mcpServers.huinet;
+    const wired: ReturnType<typeof wireMcpTarget>[] = [];
+    const opened: string[] = [];
+    const updates: Record<string, boolean> = {};
+
+    for (const agent of this.enrichAgents()) {
+      const target = agentIdToMcpTarget(agent.id);
+      if (target) {
+        wired.push(wireMcpTarget(target, spec));
+      }
+      updates[agent.id] = true;
+      opened.push(agent.id);
+    }
+    setManyA2aOpen(updates, this.paths);
+
+    return { wired, opened, agents: this.enrichAgents() };
+  }
+
+  disconnectAll(): { closed: string[]; agents: EnrichedAgent[] } {
+    const updates: Record<string, boolean> = {};
+    const closed: string[] = [];
+    for (const agent of this.enrichAgents()) {
+      updates[agent.id] = false;
+      closed.push(agent.id);
+    }
+    setManyA2aOpen(updates, this.paths);
+    return { closed, agents: this.enrichAgents() };
+  }
+
+  runDoctor(): {
+    ok: boolean;
+    checks: Array<{ name: string; pass: boolean; detail?: string }>;
+  } {
+    const agents = this.enrichAgents();
+    const checks = [
+      { name: 'Hub 运行中', pass: this.running },
+      {
+        name: `已发现 Agent（${agents.length}）`,
+        pass: agents.length > 0,
       },
-    };
+      {
+        name: `A2A 开放（${agents.filter((a) => a.a2aOpen).length}）`,
+        pass: agents.some((a) => a.a2aOpen),
+        detail: '在「A2A 网络」页用开关开放，或点一键全连',
+      },
+      {
+        name: 'MCP · Claude',
+        pass: isMcpWired('claude'),
+      },
+      {
+        name: 'MCP · Cursor',
+        pass: isMcpWired('cursor'),
+      },
+      {
+        name: 'MCP · Codex',
+        pass: isMcpWired('codex'),
+      },
+      {
+        name: `记忆条目（${this.context.list({ limit: 10000 }).length}）`,
+        pass: true,
+      },
+    ];
+    return { ok: checks.every((c) => c.pass), checks };
   }
 
   private handleWsConnection(ws: WebSocket, _req: http.IncomingMessage): void {
@@ -513,17 +737,23 @@ export class LocalHub extends EventEmitter {
         return { ok: true, id: params.id };
 
       case A2AMethod.LIST_AGENTS:
-        return { agents: this.directory.listAll() };
+        return { agents: this.listA2aPeers(from) };
 
       case A2AMethod.GET_AGENT_INFO: {
         const id = params.agentId as string;
-        const agent = this.directory.listAll().find((a) => a.id === id);
+        const agent = this.enrichAgents().find((a) => a.id === id);
         if (!agent) throw new Error(`Agent not found: ${id}`);
+        if (!agent.a2aOpen && id !== from) {
+          throw new Error(`Agent ${id} is not open on A2A network`);
+        }
         return agent;
       }
 
       case A2AMethod.SEND_MESSAGE: {
         const to = params.to as string;
+        if (to !== '*' && !isA2aOpen(to, this.paths) && to !== from) {
+          throw new Error(`Agent ${to} is not open on A2A network`);
+        }
         const msg = this.bus.publish({
           from,
           to,
@@ -590,7 +820,9 @@ export class LocalHub extends EventEmitter {
   private fanoutBusMessage(msg: BusMessage): void {
     const targets =
       msg.to === '*'
-        ? Array.from(this.wsClients.entries()).filter(([id]) => id !== msg.from)
+        ? Array.from(this.wsClients.entries()).filter(
+            ([id]) => id !== msg.from && isA2aOpen(id, this.paths)
+          )
         : ([[msg.to, this.wsClients.get(msg.to)]] as Array<
             [string, WebSocket | undefined]
           >);
@@ -598,6 +830,7 @@ export class LocalHub extends EventEmitter {
     for (const [id, ws] of targets) {
       if (!ws || ws.readyState !== WebSocket.OPEN) continue;
       if (id === msg.from) continue;
+      if (msg.to !== '*' && !isA2aOpen(id, this.paths)) continue;
       HubRPC.sendRequest(ws, {
         jsonrpc: '2.0',
         method: 'a2a.message',
