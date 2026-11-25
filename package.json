@@ -1,42 +1,46 @@
 {
   "name": "@huinet/network",
-  "version": "0.1.0",
-  "description": "Decentralized Agent-to-Agent (A2A) networking library with P2P communication",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "version": "2.0.0",
+  "description": "Local Agent Fabric — same-machine agent discovery, A2A bus, and shared context hub",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "bin": {
     "huinet": "./bin/huinet"
   },
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "import": "./dist/src/index.js",
+      "require": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts"
     }
   },
   "files": [
     "dist",
     "bin",
-    "cli"
+    "cli",
+    "apps/desktop/dist"
   ],
   "scripts": {
     "build": "tsc && node scripts/build.js",
     "build:cli": "tsc",
+    "build:ui": "npm run build --prefix apps/desktop",
+    "dev": "ts-node cli/index.ts",
+    "dev:daemon": "ts-node cli/hub/run-daemon.ts",
+    "dev:ui": "npm run dev --prefix apps/desktop",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "lint": "eslint src cli --ext .ts",
     "prepublishOnly": "npm run build && npm test",
     "start": "node dist/cli/index.js",
-    "dev": "ts-node cli/index.ts",
     "cli": "ts-node cli/index.ts"
   },
   "keywords": [
-    "p2p",
-    "networking",
     "agent",
     "a2a",
-    "decentralized",
-    "cli",
+    "mcp",
+    "context",
+    "local",
     "huinet"
   ],
   "author": "HuiNet Contributors",
@@ -52,6 +56,7 @@
   "devDependencies": {
     "@types/jest": "^29.5.0",
     "@types/node": "^20.0.0",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.0.0",
@@ -61,10 +66,12 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@types/ws": "^8.18.1",
     "commander": "^11.1.0",
     "multicast-dns": "^7.2.5",
     "tweetnacl": "^1.0.3",
     "ws": "^8.19.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

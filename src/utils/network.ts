@@ -184,7 +184,12 @@ export interface NetworkInfo {
 }
 
 export function getNetworkInfo(): NetworkInfo {
-  const interfaces = os.networkInterfaces();
+  let interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = {};
+  try {
+    interfaces = os.networkInterfaces() || {};
+  } catch {
+    interfaces = {};
+  }
   const interfaceList: Array<{
     name: string;
     addresses: string[];
@@ -207,7 +212,12 @@ export function getNetworkInfo(): NetworkInfo {
     }
   }
 
-  const primaryIP = getPrimaryLocalIP();
+  let primaryIP: string | undefined;
+  try {
+    primaryIP = getPrimaryLocalIP();
+  } catch {
+    primaryIP = undefined;
+  }
 
   return {
     hostname: os.hostname(),

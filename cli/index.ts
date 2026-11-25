@@ -1,360 +1,544 @@
 #!/usr/bin/env node
 /**
- * HuiNet CLI - Main Entry Point
- *
- * Command-line interface for HuiNet P2P Agent Networking
+ * HuiNet CLI — Local Agent Fabric
  */
 
 import { Command } from 'commander';
-import { createDaemon } from './daemon';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { createConfigManager } from './config/agent-config';
-import { createProcessManager } from './launcher';
-import { createNetworkManager } from './network';
+import {
+  httpJson,
+  isHubReachable,
+  printHubStatus,
+  runHubForeground,
+  startHubDaemon,
+  stopHubDaemon,
+} from './hub/lifecycle';
+import { createAgentScanner } from '../src/inventory';
+import { createContextStore, importSessions } from '../src/context';
+import { loadHubConfig, getHuiNetPaths, ensureHuiNetDirs } from '../src/paths';
 
 const program = new Command();
 
-// CLI information
 program
   .name('huinet')
-  .description('HuiNet P2P Agent Networking - Connect AI agents across networks')
-  .version('1.0.0');
+  .description(
+    'HuiNet Local Agent Fabric — discover agents, share context, same-machine A2A'
+  )
+  .version('2.0.0');
 
 // =============================================================================
-// Run Command
+// Hub lifecycle
 // =============================================================================
 program
-  .command('run <agent-id>')
-  .description('Start an agent with HuiNet')
-  .option('-w, --workdir <path>', 'Working directory')
-  .option('--no-daemon', 'Do not run as daemon (foreground mode)')
-  .action(async (agentId, options) => {
-    try {
-      // Load configuration
-      const configManager = createConfigManager();
-      await configManager.load();
-
-      const agentConfig = configManager.getAgent(agentId);
-
-      if (!agentConfig) {
-        console.error(`❌ Agent "${agentId}" not found in configuration.`);
-        console.log(`   Use: huinet agent add ${agentId} --command <path>`);
-        process.exit(1);
-      }
-
-      // Load network configuration
-      const networkManager = createNetworkManager();
-      await networkManager.load();
-
-      const activeNetwork = networkManager.getActiveNetwork();
-      if (!activeNetwork) {
-        console.warn(`⚠ No active network. Agents may not be able to communicate.`);
-        console.warn(`  Use: huinet network create <name>`);
-      }
-
-      // Create and start daemon
-      const daemon = createDaemon();
-
-      daemon.on('ready', () => {
-        const nodeId = daemon.getHuiNet()?.getNodeID();
-        console.log(`✓ HuiNet daemon started`);
-        console.log(`  NodeID: ${nodeId?.substring(0, 16)}...`);
-
-        if (activeNetwork) {
-          console.log(`  Network: ${activeNetwork.name}`);
-        }
-      });
-
-      daemon.on('agentRegistered', (info) => {
-        console.log(`✓ Agent registered: ${info.id}`);
-      });
-
-      await daemon.start();
-
-      // Launch the agent
-      const processManager = createProcessManager(daemon);
-
-      processManager.on('agentLaunched', (status) => {
-        console.log(`✓ Agent launched: ${status.agentId} (PID: ${status.pid})`);
-        console.log(`  WebSocket: ${status.pid ? 'Connected' : 'Pending'}`);
-      });
-
-      processManager.on('agentExited', (id, code) => {
-        console.log(`✗ Agent exited: ${id} (code: ${code})`);
-      });
-
-      processManager.on('agentStdout', (id, data) => {
-        process.stdout.write(`[${id}] ${data}`);
-      });
-
-      processManager.on('agentStderr', (id, data) => {
-        process.stderr.write(`[${id}] ${data}`);
-      });
-
-      await processManager.launchAgent({
-        ...agentConfig,
-        workdir: options.workdir || agentConfig.workdir,
-      });
-
-      // Handle shutdown
-      const shutdown = async () => {
-        console.log('\nShutting down...');
-        await processManager.stopAll();
-        await daemon.stop();
-        process.exit(0);
-      };
-
-      process.on('SIGINT', shutdown);
-      process.on('SIGTERM', shutdown);
-
-      // Keep running
-      if (options.daemon !== false) {
-        console.log(`\nAgent ${agentId} is running. Press Ctrl+C to stop.`);
-      }
-    } catch (error) {
-      console.error('❌ Failed to start agent:', (error as Error).message);
-      process.exit(1);
+  .command('start')
+  .description('Start the local HuiNet hub (singleton daemon)')
+  .option('-f, --foreground', 'Run in foreground')
+  .action(async (options) => {
+    if (options.foreground) {
+      await runHubForeground();
+    } else {
+      await startHubDaemon();
     }
   });
 
-// =============================================================================
-// Agent Commands
-// =============================================================================
-const agentCmd = program.command('agent');
+program
+  .command('stop')
+  .description('Stop the local HuiNet hub')
+  .action(async () => {
+    await stopHubDaemon();
+  });
 
-agentCmd
+program
+  .command('status')
+  .description('Show local hub status')
+  .action(async () => {
+    await printHubStatus();
+  });
+
+// =============================================================================
+// Agents
+// =============================================================================
+const agents = program.command('agents').description('Local agent inventory');
+
+agents
+  .command('scan')
+  .description('Scan this machine for installed AI agents')
+  .action(async () => {
+    if (await isHubReachable()) {
+      const snap = await httpJson<{
+        agents: Array<{ id: string; name: string; presence: string; binaryPath?: string }>;
+      }>('/api/agents/scan', { method: 'POST', body: {} });
+      printAgentTable(snap.agents);
+      return;
+    }
+    const scanner = createAgentScanner();
+    const snap = await scanner.scan();
+    printAgentTable(snap.agents);
+  });
+
+agents
+  .command('list')
+  .description('List discovered agents')
+  .action(async () => {
+    if (await isHubReachable()) {
+      const data = await httpJson<{ agents: Array<Record<string, unknown>> }>(
+        '/api/agents'
+      );
+      printAgentTable(data.agents as never);
+      return;
+    }
+    const scanner = createAgentScanner();
+    const cached = scanner.loadCached() || (await scanner.scan());
+    printAgentTable(cached.agents);
+  });
+
+agents
+  .command('show <id>')
+  .description('Show details for one agent')
+  .action(async (id: string) => {
+    if (await isHubReachable()) {
+      try {
+        const agent = await httpJson<Record<string, unknown>>(
+          `/api/agents/${encodeURIComponent(id)}`
+        );
+        console.log(JSON.stringify(agent, null, 2));
+        return;
+      } catch {
+        console.error(`Agent "${id}" not found.`);
+        process.exit(1);
+      }
+    }
+    const scanner = createAgentScanner();
+    await scanner.scan();
+    const agent = scanner.getAgent(id);
+    if (!agent) {
+      console.error(`Agent "${id}" not found. Run: huinet agents scan`);
+      process.exit(1);
+    }
+    console.log(JSON.stringify(agent, null, 2));
+  });
+
+agents
   .command('add <id>')
-  .description('Add a new agent configuration')
-  .requiredOption('--command <path>', 'Command to execute')
+  .description('Manually register an agent binary')
+  .requiredOption('--command <path>', 'Command / binary path')
   .option('--name <name>', 'Display name')
-  .option('--args <args>', 'Command arguments (comma-separated)')
-  .option('--workdir <path>', 'Working directory')
-  .action(async (id, options) => {
+  .action(async (id: string, options: { command: string; name?: string }) => {
     const configManager = createConfigManager();
     await configManager.load();
-
     await configManager.setAgent({
       id,
       name: options.name || id,
       command: options.command,
-      args: options.args ? options.args.split(',') : undefined,
-      workdir: options.workdir,
     });
-
-    console.log(`✓ Agent "${id}" added to configuration.`);
+    console.log(`✓ Agent "${id}" added.`);
+    if (await isHubReachable()) {
+      await httpJson('/api/agents/scan', { method: 'POST', body: {} });
+    }
   });
 
-agentCmd
-  .command('list')
-  .description('List all configured agents')
-  .action(async () => {
-    const configManager = createConfigManager();
-    await configManager.load();
-
-    const agents = configManager.getAgents();
-
-    if (agents.length === 0) {
-      console.log('No agents configured.');
-      console.log('Use: huinet agent add <id> --command <path>');
-      return;
-    }
-
-    console.log('\nConfigured Agents:');
-    console.log('─────────────────────────────────────────────────────');
-
-    for (const agent of agents) {
-      console.log(`\n  ${agent.name} (${agent.id})`);
-      console.log(`  Command: ${agent.command}`);
-      if (agent.args) {
-        console.log(`  Args: ${agent.args.join(' ')}`);
-      }
-      if (agent.workdir) {
-        console.log(`  Workdir: ${agent.workdir}`);
-      }
-    }
-
-    console.log('');
-  });
-
-agentCmd
+agents
   .command('remove <id>')
-  .description('Remove an agent configuration')
-  .action(async (id) => {
+  .description('Remove a manually configured agent')
+  .action(async (id: string) => {
     const configManager = createConfigManager();
     await configManager.load();
-
     const removed = await configManager.removeAgent(id);
-
-    if (removed) {
-      console.log(`✓ Agent "${id}" removed from configuration.`);
-    } else {
-      console.log(`✗ Agent "${id}" not found.`);
-    }
+    console.log(removed ? `✓ Removed "${id}"` : `✗ "${id}" not found`);
   });
+
+function printAgentTable(
+  agentsList: Array<{
+    id: string;
+    name: string;
+    presence: string;
+    binaryPath?: string;
+    online?: boolean;
+  }>
+): void {
+  if (!agentsList.length) {
+    console.log('No agents discovered. Install Claude Code, Codex, Cursor, etc.');
+    return;
+  }
+  console.log('\nLocal Agents\n');
+  for (const a of agentsList) {
+    const mark =
+      a.presence === 'connected' || a.online
+        ? '\x1b[32m●\x1b[0m'
+        : a.presence === 'running'
+          ? '\x1b[33m●\x1b[0m'
+          : a.presence === 'installed'
+            ? '\x1b[36m●\x1b[0m'
+            : '○';
+    console.log(`  ${mark} ${a.name} (${a.id})  [${a.presence}]`);
+    if (a.binaryPath) console.log(`      ${a.binaryPath}`);
+  }
+  console.log('');
+}
 
 // =============================================================================
-// Network Commands
+// Context
 // =============================================================================
-const networkCmd = program.command('network');
+const context = program.command('context').description('Shared context hub');
 
-networkCmd
-  .command('create <name>')
-  .description('Create a new network')
-  .action(async (name) => {
-    const networkManager = createNetworkManager();
-    await networkManager.load();
-
-    const network = await networkManager.createNetwork(name);
-
-    console.log(`✓ Network "${name}" created!`);
-    console.log(`\n🔑 Network Key: \x1b[1m${network.key}\x1b[0m`);
-    console.log(`\nShare this key with trusted agents:`);
-    console.log(`  huinet network join ${name} ${network.key}\n`);
-  });
-
-networkCmd
-  .command('join <name> <key>')
-  .description('Join an existing network')
-  .action(async (name, key) => {
-    const networkManager = createNetworkManager();
-    await networkManager.load();
-
-    if (!networkManager.verifyKey(key)) {
-      console.error(`❌ Invalid network key format.`);
-      console.log(`  Key must be 32 character hex string.`);
-      process.exit(1);
-    }
-
-    const network = await networkManager.joinNetwork(name, key);
-
-    console.log(`✓ Joined network "${name}"`);
-    console.log(`  Machine ID: ${network.machineId}`);
-    console.log(`\nYou can now start agents with: huinet run <agent-id>\n`);
-  });
-
-networkCmd
+context
   .command('list')
-  .description('List all networks')
+  .description('List memory entries')
+  .option('--project <slug>', 'Filter by project')
+  .action(async (options) => {
+    if (await isHubReachable()) {
+      const q = options.project
+        ? `/api/context?project=${encodeURIComponent(options.project)}`
+        : '/api/context';
+      const data = await httpJson<{ memories: Array<Record<string, unknown>> }>(
+        q
+      );
+      for (const m of data.memories) {
+        console.log(`- [${m.kind}] ${m.title} (${m.id})`);
+      }
+      return;
+    }
+    const store = createContextStore();
+    for (const m of store.list({ project: options.project, limit: 50 })) {
+      console.log(`- [${m.kind}] ${m.title} (${m.id})`);
+    }
+  });
+
+context
+  .command('search <query>')
+  .description('Search shared memories')
+  .action(async (query: string) => {
+    if (await isHubReachable()) {
+      const data = await httpJson<{ memories: Array<Record<string, unknown>> }>(
+        `/api/context?q=${encodeURIComponent(query)}`
+      );
+      console.log(JSON.stringify(data.memories, null, 2));
+      return;
+    }
+    console.log(JSON.stringify(createContextStore().search(query), null, 2));
+  });
+
+context
+  .command('upsert')
+  .description('Create or update a memory')
+  .requiredOption('--title <title>', 'Title')
+  .requiredOption('--body <body>', 'Body')
+  .option('--kind <kind>', 'fact|decision|preference|artifact|thread_summary', 'fact')
+  .option('--scope <scope>', 'global|project|agent-private', 'global')
+  .option('--project <slug>', 'Project slug')
+  .action(async (options) => {
+    const payload = {
+      kind: options.kind,
+      title: options.title,
+      body: options.body,
+      scope: options.scope,
+      project: options.project,
+      tags: [],
+    };
+    if (await isHubReachable()) {
+      const entry = await httpJson('/api/context', {
+        method: 'POST',
+        body: payload,
+      });
+      console.log('✓ Saved', (entry as { id: string }).id);
+      return;
+    }
+    const entry = createContextStore().upsert(payload as never);
+    console.log('✓ Saved', entry.id);
+  });
+
+context
+  .command('import')
+  .description('Import sessions from a local agent into the context hub')
+  .requiredOption('--from <source>', 'claude|codex|cursor')
+  .option('--project <slug>', 'Project scope')
+  .option('--limit <n>', 'Max sessions', '20')
+  .action(async (options) => {
+    const from = options.from as 'claude' | 'codex' | 'cursor';
+    if (await isHubReachable()) {
+      const result = await httpJson<{ imported: number; skipped: number }>(
+        '/api/context/import',
+        {
+          method: 'POST',
+          body: {
+            from,
+            project: options.project,
+            limit: parseInt(options.limit, 10),
+          },
+        }
+      );
+      console.log(`✓ Imported ${result.imported} (skipped ${result.skipped})`);
+      return;
+    }
+    const result = await importSessions({
+      from,
+      project: options.project,
+      limit: parseInt(options.limit, 10),
+    });
+    console.log(`✓ Imported ${result.imported} (skipped ${result.skipped})`);
+  });
+
+context
+  .command('migrate')
+  .description('Export a context package for another agent')
+  .option('--to <agentId>', 'Target agent id')
+  .option('--project <slug>', 'Project scope')
+  .option('--out <file>', 'Write markdown to file')
+  .action(async (options) => {
+    let pkg: { markdown: string; memories: unknown[] };
+    if (await isHubReachable()) {
+      pkg = await httpJson('/api/context/migrate', {
+        method: 'POST',
+        body: { targetAgent: options.to, project: options.project },
+      });
+    } else {
+      pkg = createContextStore().migrate({
+        targetAgent: options.to,
+        project: options.project,
+      });
+    }
+    if (options.out) {
+      fs.writeFileSync(options.out, pkg.markdown, 'utf-8');
+      console.log(`✓ Wrote ${options.out} (${pkg.memories.length} memories)`);
+    } else {
+      console.log(pkg.markdown);
+    }
+  });
+
+// =============================================================================
+// Bus
+// =============================================================================
+const bus = program.command('bus').description('Local A2A message bus');
+
+bus
+  .command('peers')
+  .description('List connected agents on the bus')
   .action(async () => {
-    const networkManager = createNetworkManager();
-    await networkManager.load();
+    await ensureHub();
+    const data = await httpJson<{ agents: Array<{ id: string; name: string }> }>(
+      '/api/agents/connected'
+    );
+    if (!data.agents.length) {
+      console.log('No agents connected. Register via WS or MCP.');
+      return;
+    }
+    for (const a of data.agents) {
+      console.log(`  ● ${a.name} (${a.id})`);
+    }
+  });
 
-    const networks = networkManager.getAllNetworks();
+bus
+  .command('send <to>')
+  .description('Send a message to an agent (or * to broadcast)')
+  .requiredOption('--message <text>', 'Message text')
+  .option('--from <id>', 'Sender id', 'cli')
+  .action(async (to: string, options) => {
+    await ensureHub();
+    const msg = await httpJson('/api/bus/send', {
+      method: 'POST',
+      body: {
+        to,
+        from: options.from,
+        type: 'chat',
+        payload: { text: options.message },
+      },
+    });
+    console.log('✓ Sent', (msg as { id: string }).id);
+  });
 
-    if (networks.length === 0) {
-      console.log('No networks configured.');
-      console.log('\nCreate a network:');
-      console.log('  huinet network create <name>');
+bus
+  .command('listen')
+  .description('Print recent bus messages')
+  .action(async () => {
+    await ensureHub();
+    const data = await httpJson<{ messages: unknown[] }>('/api/bus/messages');
+    console.log(JSON.stringify(data.messages, null, 2));
+  });
+
+// =============================================================================
+// MCP
+// =============================================================================
+const mcpCmd = program.command('mcp').description('MCP helpers');
+mcpCmd
+  .command('install-config')
+  .description('Print / write MCP config snippets for local agents')
+  .option('--target <agent>', 'claude|cursor|codex|all', 'all')
+  .option('--write', 'Write into agent config files when possible')
+  .action(async (options) => {
+    const snippet = await getMcpSnippet();
+    console.log('\nMCP config snippet:\n');
+    console.log(JSON.stringify(snippet, null, 2));
+    console.log('');
+
+    if (!options.write) {
+      console.log('Pass --write to merge into Claude/Cursor config files.');
       return;
     }
 
-    console.log('\n📡 Configured Networks\n');
+    const targets =
+      options.target === 'all'
+        ? ['claude', 'cursor', 'codex']
+        : [options.target as string];
 
-    for (let i = 0; i < networks.length; i++) {
-      const network = networks[i];
-      const active = network.active ? '\x1b[32m*active\x1b[0m' : '';
-      console.log(`  ${i + 1}. \x1b[1m${network.name}\x1b[0m ${active}`);
-      console.log(`     Key: ${network.key.substring(0, 16)}...`);
-      if (network.machineId) {
-        console.log(`     Machine: ${network.machineId}`);
+    for (const t of targets) {
+      try {
+        await writeMcpConfig(t, snippet);
+        console.log(`✓ Wrote MCP config for ${t}`);
+      } catch (err) {
+        console.warn(`⚠ ${t}: ${(err as Error).message}`);
       }
     }
   });
 
-networkCmd
-  .command('status')
-  .description('Show network status')
+async function getMcpSnippet(): Promise<Record<string, unknown>> {
+  if (await isHubReachable()) {
+    return httpJson('/api/mcp/config');
+  }
+  const config = loadHubConfig();
+  const script = path.resolve(__dirname, '../mcp/server.js');
+  const alt = path.resolve(process.cwd(), 'dist/mcp/server.js');
+  const serverPath = fs.existsSync(script) ? script : alt;
+  return {
+    mcpServers: {
+      huinet: {
+        command: 'node',
+        args: [serverPath],
+        env: {
+          HUINET_HTTP: `http://${config.host}:${config.httpPort}`,
+        },
+      },
+    },
+  };
+}
+
+async function writeMcpConfig(
+  target: string,
+  snippet: Record<string, unknown>
+): Promise<void> {
+  const home = os.homedir();
+  const huinetServer = (snippet as { mcpServers: { huinet: unknown } })
+    .mcpServers.huinet;
+
+  if (target === 'claude') {
+    const file = path.join(home, '.claude.json');
+    let data: Record<string, unknown> = {};
+    if (fs.existsSync(file)) {
+      data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    }
+    const mcp = (data.mcpServers as Record<string, unknown>) || {};
+    mcp.huinet = huinetServer;
+    data.mcpServers = mcp;
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf-8');
+    return;
+  }
+
+  if (target === 'cursor') {
+    const file = path.join(home, '.cursor', 'mcp.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    let data: Record<string, unknown> = {};
+    if (fs.existsSync(file)) {
+      data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    }
+    const mcp = (data.mcpServers as Record<string, unknown>) || {};
+    mcp.huinet = huinetServer;
+    data.mcpServers = mcp;
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf-8');
+    return;
+  }
+
+  if (target === 'codex') {
+    const file = path.join(home, '.codex', 'config.toml');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const block = `\n# HuiNet MCP\n[mcp_servers.huinet]\ncommand = "node"\nargs = ${JSON.stringify(
+      (huinetServer as { args: string[] }).args
+    )}\n`;
+    fs.appendFileSync(file, block, 'utf-8');
+    return;
+  }
+
+  throw new Error(`Unknown target ${target}`);
+}
+
+// =============================================================================
+// App
+// =============================================================================
+program
+  .command('app')
+  .description('Open the HuiNet desktop UI')
   .action(async () => {
-    const networkManager = createNetworkManager();
-    await networkManager.load();
+    await ensureHub();
+    const config = loadHubConfig();
+    const url = `http://${config.host}:${config.httpPort}/`;
+    const tauriBin = path.join(
+      process.cwd(),
+      'apps/desktop/src-tauri/target/release/huinet-desktop'
+    );
+    const open =
+      process.platform === 'darwin'
+        ? 'open'
+        : process.platform === 'win32'
+          ? 'start'
+          : 'xdg-open';
 
-    const activeNetwork = networkManager.getActiveNetwork();
-
-    if (!activeNetwork) {
-      console.log('No active network.');
-      console.log('\nCreate or join a network:');
-      console.log('  huinet network create <name>');
-      console.log('  huinet network join <name> <key>');
+    if (fs.existsSync(tauriBin)) {
+      const { spawn } = await import('child_process');
+      spawn(tauriBin, [], { detached: true, stdio: 'ignore' }).unref();
+      console.log('✓ Launched HuiNet desktop app');
       return;
     }
 
-    console.log('\n📡 Network Status\n');
-    console.log(`  Name: \x1b[1m${activeNetwork.name}\x1b[0m`);
-    console.log(`  Key: ${activeNetwork.key}`);
-    console.log(`  Machine: ${activeNetwork.machineId}`);
-    console.log(`  Status: \x1b[32mActive\x1b[0m`);
+    const { spawn } = await import('child_process');
+    spawn(open, [url], { detached: true, stdio: 'ignore' }).unref();
+    console.log(`✓ Opened ${url}`);
   });
 
 // =============================================================================
-// Test Commands
+// Doctor
 // =============================================================================
 program
   .command('doctor')
-  .description('Check HuiNet system status')
+  .description('Check HuiNet local hub health')
   .action(async () => {
     console.log('\nHuiNet System Check\n');
-
     const checks: { name: string; pass: boolean }[] = [];
+    const nodeOk = parseInt(process.version.slice(1).split('.')[0], 10) >= 18;
+    checks.push({ name: `Node.js ${process.version}`, pass: nodeOk });
 
-    // Check Node.js version
-    const nodeVersion = process.version;
-    const nodeOk = parseInt(nodeVersion.slice(1).split('.')[0], 10) >= 16;
-    checks.push({ name: `Node.js ${nodeVersion}`, pass: nodeOk });
+    ensureHuiNetDirs();
+    checks.push({
+      name: 'Config directory ~/.huinet',
+      pass: fs.existsSync(getHuiNetPaths().root),
+    });
 
-    // Check config directory
-    const path = require('path');
-    const os = require('os');
-    const configDir = path.join(os.homedir(), '.huinet');
-    const fs = require('fs');
+    const reachable = await isHubReachable();
+    checks.push({ name: 'Hub HTTP reachable', pass: reachable });
 
-    const configExists = fs.existsSync(configDir);
-    checks.push({ name: 'Config directory exists', pass: configExists });
+    const scanner = createAgentScanner();
+    const snap = await scanner.scan();
+    checks.push({
+      name: `Agents discovered: ${snap.agents.length}`,
+      pass: snap.agents.length > 0,
+    });
 
-    // Check configuration file
-    const configManager = createConfigManager();
-    try {
-      await configManager.load();
-      const agents = configManager.getAgents();
-      checks.push({ name: 'Configuration valid', pass: true });
-      checks.push({ name: `Agents configured: ${agents.length}`, pass: agents.length > 0 });
-    } catch {
-      checks.push({ name: 'Configuration valid', pass: false });
-    }
-
-    // Check network
-    const networkManager = createNetworkManager();
-    try {
-      await networkManager.load();
-      const activeNetwork = networkManager.getActiveNetwork();
-      if (activeNetwork) {
-        checks.push({ name: 'Network configured', pass: true });
-        checks.push({ name: `Active network: ${activeNetwork.name}`, pass: true });
-      } else {
-        checks.push({ name: 'Network configured', pass: false });
-        checks.push({ name: 'No active network', pass: false });
-      }
-    } catch {
-      checks.push({ name: 'Network configuration', pass: false });
-    }
-
-    // Print results
     for (const check of checks) {
       const icon = check.pass ? '✓' : '✗';
       const color = check.pass ? '\x1b[32m' : '\x1b[31m';
       console.log(`  ${color}${icon}\x1b[0m ${check.name}`);
     }
-
-    const allPassed = checks.every((c) => c.pass);
-    console.log(`\nSystem Status: ${allPassed ? '\x1b[32mHEALTHY\x1b[0m' : '\x1b[31mISSUES\x1b[0m'}\n`);
-
-    process.exit(allPassed ? 0 : 1);
+    console.log('');
   });
 
-// =============================================================================
-// Default
-// =============================================================================
+async function ensureHub(): Promise<void> {
+  if (await isHubReachable()) return;
+  console.error('Hub is not running. Start it with: huinet start');
+  process.exit(1);
+}
+
 program.action(() => {
   program.outputHelp();
 });
 
-// Parse command line arguments
 program.parse();

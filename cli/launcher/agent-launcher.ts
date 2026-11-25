@@ -209,6 +209,6 @@ export async function launchAgent(
   return launcher.launch({
     config,
     proxyPort: allocation.port.toString(),
-    nodeId: daemon.getHuiNet()?.getNodeID() || '',
+    nodeId: 'local',
   });
 }

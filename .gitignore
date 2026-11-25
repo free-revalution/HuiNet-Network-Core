@@ -7,6 +7,8 @@ node_modules/
 # Build outputs
 dist/
 build/
+apps/desktop/dist/
+apps/desktop/src-tauri/target/
 
 # IDE
 .vscode/
@@ -36,3 +38,4 @@ docs/测试/
 .env
 .env.local
 specs/
+*.tsbuildinfo

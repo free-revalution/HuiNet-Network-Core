@@ -1,14 +1,61 @@
-// Core exports - main HuiNet class
+/**
+ * HuiNet Local Agent Fabric
+ *
+ * Same-machine agent discovery, A2A bus, and shared context hub.
+ * Cross-machine P2P is deprecated and no longer the primary API.
+ */
+
+export {
+  LocalHub,
+  createLocalHub,
+  AgentDirectory,
+  MessageBus,
+  HubRPC,
+  A2AMethod,
+} from './hub';
+export type { LocalHubStatus, ConnectedAgent, BusMessage } from './hub';
+
+export {
+  AgentScanner,
+  createAgentScanner,
+  BUILTIN_DETECTORS,
+} from './inventory';
+export type {
+  DiscoveredAgent,
+  InventorySnapshot,
+  AgentDetector,
+  AgentPresence,
+} from './inventory';
+
+export {
+  ContextStore,
+  createContextStore,
+  importSessions,
+} from './context';
+export type {
+  MemoryEntry,
+  MemoryKind,
+  ImportResult,
+  MigratePackage,
+} from './context';
+
+export {
+  getHuiNetPaths,
+  ensureHuiNetDirs,
+  loadHubConfig,
+  saveHubConfig,
+  DEFAULT_HTTP_PORT,
+  DEFAULT_WS_PORT,
+} from './paths';
+export type { HuiNetPaths, HubConfig } from './paths';
+
+// Legacy P2P exports kept for transitional imports / tests
 export { HuiNet, HuiNetConfig } from './HuiNet';
-
-// Core module exports - new organizational structure
 export { HuiNetNode, HuiNetConfig as HuiNetNodeConfig } from './core/HuiNetNode';
-
-// Module exports
-export * from './types'; // 类型定义
-export * from './crypto'; // 加密相关
-export * from './routing'; // 路由相关
-export * from './transport'; // 传输相关
-export * from './discovery'; // 发现相关
-export * from './protocol'; // 协议相关
-export * from './utils/network'; // 网络工具 
+export * from './types';
+export * from './crypto';
+export * from './routing';
+export * from './transport';
+export * from './discovery';
+export * from './protocol';
+export * from './utils/network';

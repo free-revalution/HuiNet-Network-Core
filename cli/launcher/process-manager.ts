@@ -96,7 +96,7 @@ export class ProcessManager extends EventEmitter {
     const result = await this.launcher.launch({
       config,
       proxyPort: allocation.port.toString(),
-      nodeId: this.daemon.getHuiNet()?.getNodeID() || '',
+      nodeId: 'local',
     });
 
     return this.processes.get(result.agentId)!;
