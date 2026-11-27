@@ -124,8 +124,53 @@ function stopHub() {
   hubProc = null;
 }
 
+function iconsDir() {
+  return path.join(__dirname, '../src-tauri/icons');
+}
+
+function appIconPath() {
+  const dir = iconsDir();
+  if (process.platform === 'darwin') {
+    const icns = path.join(dir, 'icon.icns');
+    if (fs.existsSync(icns)) return icns;
+  }
+  if (process.platform === 'win32') {
+    const ico = path.join(dir, 'icon.ico');
+    if (fs.existsSync(ico)) return ico;
+  }
+  return path.join(dir, 'icon.png');
+}
+
+function trayIconImage() {
+  const dir = iconsDir();
+  const isMac = process.platform === 'darwin';
+  // macOS: black template (+ @2x sibling) → system paints white on dark menu bar.
+  // tray-white.png is the explicit white简版 asset for non-template hosts.
+  if (isMac) {
+    const template = path.join(dir, 'trayTemplate.png');
+    if (fs.existsSync(template)) {
+      const image = nativeImage.createFromPath(template);
+      if (!image.isEmpty()) {
+        image.setTemplateImage(true);
+        return image;
+      }
+    }
+  }
+  for (const name of ['tray-white.png', '32x32.png', 'icon.png']) {
+    const p = path.join(dir, name);
+    if (!fs.existsSync(p)) continue;
+    const image = nativeImage.createFromPath(p);
+    if (image.isEmpty()) continue;
+    return name === 'icon.png' ? image.resize({ width: 16, height: 16 }) : image;
+  }
+  return nativeImage.createFromDataURL(
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAFUlEQVQ4T2NkYGD4z0ABYBw1gGE0DFABAAbqA/+5bQe/AAAAAElFTkSuQmCC'
+  );
+}
+
 function createWindow() {
   const isMac = process.platform === 'darwin';
+  const icon = appIconPath();
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -133,6 +178,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 640,
     title: 'HuiNet',
+    icon,
     // Cursor Agent–style solid dark shell
     backgroundColor: '#141414',
     transparent: false,
@@ -155,6 +201,11 @@ function createWindow() {
   if (isMac) {
     // Keep native traffic lights visible inside the inset titlebar
     mainWindow.setWindowButtonVisibility(true);
+    try {
+      app.dock?.setIcon(nativeImage.createFromPath(icon));
+    } catch {
+      // ignore
+    }
   }
 
   mainWindow.once('ready-to-show', () => mainWindow?.show());
@@ -170,13 +221,8 @@ function createWindow() {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, '../src-tauri/icons/icon.png');
-  const image = fs.existsSync(iconPath)
-    ? nativeImage.createFromPath(iconPath)
-    : nativeImage.createEmpty();
-  tray = new Tray(image.isEmpty() ? nativeImage.createFromDataURL(
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAFUlEQVQ4T2NkYGD4z0ABYBw1gGE0DFABAAbqA/+5bQe/AAAAAElFTkSuQmCC'
-  ) : image.resize({ width: 16, height: 16 }));
+  const image = trayIconImage();
+  tray = new Tray(image);
 
   const menu = Menu.buildFromTemplate([
     {
