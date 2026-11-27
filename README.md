@@ -1,53 +1,57 @@
+<div align="center">
+
+<img src="docs/assets/logo.svg" alt="HuiNet" width="96" height="96" />
+
 # HuiNet
 
-**Your agents already live on one machine. HuiNet turns them into a network.**
+### Your agents already share a machine. Give them a network.
 
-<p align="center">
-  <strong>Local Agent Fabric</strong> — discover · share context · A2A on <code>127.0.0.1</code>
-</p>
+Discover local agents · open an A2A bus · share memory — all on `127.0.0.1`.
 
-<p align="center">
-  <a href="#quick-start">Quick Start</a> ·
-  <a href="#what-you-get">Features</a> ·
-  <a href="docs/agent-integration.md">Agent Integration</a> ·
-  <a href="docs/api-reference.md">API</a> ·
-  <a href="#license">MIT</a>
-</p>
+[![License: MIT](https://img.shields.io/badge/license-MIT-111111)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D18-111111?logo=nodedotjs&logoColor=white)](package.json)
+[![Local-only](https://img.shields.io/badge/network-127.0.0.1-5B9CFF)](#scope)
+[![MCP](https://img.shields.io/badge/MCP-ready-111111)](docs/agent-integration.md)
+
+**English** · [简体中文](README.zh-CN.md)
+
+[Quick start](#quick-start) · [Is this for you?](#is-huinet-for-you) · [What you get](#what-you-get) · [Docs](docs/agent-integration.md) · [API](docs/api-reference.md)
+
+</div>
 
 ---
 
-Claude Code, Cursor, Codex, Gemini CLI, OpenClaw… they share a laptop but not a memory.
-HuiNet is a **same-machine fabric**: a local hub that finds what you installed, opens an A2A bus between them, and keeps a shared context layer you can migrate.
+Claude Code, Cursor, Codex, Gemini CLI, OpenClaw… they sit on **one laptop** and still don’t share a bus, a mailbox, or a working set.
 
-No cloud account. No cross-WAN P2P. Just a fabric on your desk.
+**HuiNet is the local Agent Fabric** — inventory what’s installed, put conversations on a peer mesh, pin a Fabric Brief, and talk through MCP / WebSocket without leaving your desk.
+
+> Not a model router ([Magpie](https://github.com/yetone/magpie) / CC Switch).  
+> Not a team issue board.  
+> The fabric underneath: who is here, who is on the bus, what they remember together.
 
 ```
-   Claude ──┐
-   Cursor ──┼──►  HuiNet Hub  ──►  shared memory · token traffic · desktop fabric UI
-   Codex  ──┘         │
-                 127.0.0.1:19527
+ Cursor chat A ──┐
+ Claude chat B ──┼──►  HuiNet Hub  ──►  mailbox · tasks · brief · canvas
+ Codex chat C  ──┘         │
+                      127.0.0.1:19527
 ```
 
-## Why HuiNet
+## Is HuiNet for you?
 
-| Pain | What HuiNet does |
-|------|------------------|
-| Context trapped in each tool’s session files | Import Claude / Codex / Cursor transcripts into one memory hub |
-| Agents can’t see each other | Inventory scan + A2A open/close per agent |
-| “Wire MCP” means hand-editing JSON everywhere | One-click connect; Hub writes MCP where adapters exist |
-| Dashboards that feel like settings panels | A **network** UI — nodes, live edges, token-weighted links |
+**Yes, if you…**
 
-HuiNet is **not** a model router (that’s Magpie / CC Switch). It’s the fabric underneath: who is on the machine, who is on the bus, what they remember together.
+- Run **more than one** local agent (or multiple chats) and want them to see each other  
+- Need **shared memory** you can import, pin, migrate, and link with `[[wikilinks]]`  
+- Want **MCP-friendly delivery** (mailbox) because agents don’t get WebSocket push  
+- Care that everything stays on **`127.0.0.1`** — no cloud account, no WAN P2P
 
-## What you get
+**Skip it if you…**
 
-- **Inventory** — fingerprint PATH, home dirs, and processes; list agents without modifying them  
-- **A2A bus** — same-machine messages over MCP tools or WebSocket JSON-RPC  
-- **Context hub** — facts / decisions / imports; export a migration pack as Markdown  
-- **Desktop fabric** — Electron shell, liquid-glass console, draggable topology, token-thick edges  
-- **Local-only** — Hub binds to `127.0.0.1` (HTTP `:19527`, WS `:19528`)
+- Only use one vendor app on its own plan and never cross tools  
+- Need a **provider / model gateway** → use [Magpie](https://github.com/yetone/magpie)  
+- Need cloud sync, multi-user SaaS, or public internet mesh (out of scope)
 
-## Quick Start
+## Quick start
 
 ```bash
 git clone https://github.com/free-revalution/HuiNet-Network-Core.git
@@ -55,55 +59,87 @@ cd HuiNet-Network-Core
 
 npm install
 npm run build && npm run build:ui
-npm link                          # optional: global `huinet`
+npm link                     # optional: global `huinet`
 
-huinet app                        # launches desktop + Hub
-# or:  huinet start && open http://127.0.0.1:19527
+huinet app                   # desktop + Hub
+# or: huinet start && open http://127.0.0.1:19527
 ```
 
-In the UI: **扫描** → toggle agents onto the fabric → import sessions → watch token traffic on the edges.
+Then in the UI: **Scan** → open chats onto the fabric → import sessions → optional **Consult** / **Export Canvas**.
 
 ```bash
-huinet app --quit                 # leave the desktop shell
-huinet stop                       # stop the Hub daemon
+huinet app --quit
+huinet stop
 ```
 
-### CLI cheatsheet
+### 30-second CLI
 
-| Command | Purpose |
-|---------|---------|
+```bash
+huinet agents scan
+huinet agents connect-all
+huinet context import --from cursor
+huinet bus send --to '*' --message 'hello fabric'
+huinet doctor
+```
+
+| Command | Does |
+|---------|------|
 | `huinet start \| stop \| status` | Hub lifecycle |
-| `huinet app` / `huinet app --quit` | Desktop window |
-| `huinet agents scan \| list \| connect-all` | Inventory & A2A |
-| `huinet context import --from claude\|codex\|cursor` | Session → memory |
-| `huinet context migrate --out ctx.md` | Export pack |
-| `huinet bus send --to '*' --message '…'` | Broadcast on fabric |
-| `huinet mcp install-config --write` | Drop MCP snippet |
-| `huinet doctor` | Health checks |
+| `huinet app` | Desktop fabric UI |
+| `huinet agents scan \| connect-all` | Inventory + A2A |
+| `huinet context import --from …` | Sessions → memory |
+| `huinet brief show \| pin <id>` | Working set |
+| `huinet mcp install-config --write` | Wire MCP snippet |
+| `huinet doctor` | Health |
 
-## How it fits together
+## What you get
+
+| | |
+|---|---|
+| **Conversation nodes** | Each Cursor / Claude / Codex chat is a fabric peer — not one blob per app |
+| **A2A bus + mailbox** | Live WS for connected peers; durable inbox for MCP (`inbox_check`) |
+| **Fabric tasks** | Assign → complete / fail without leaving localhost |
+| **Fabric Brief** | Pin facts/decisions; agents pull via MCP `fabric_brief` |
+| **Memory links** | `[[Title]]` wikilinks + 1-hop related / project scope |
+| **Consult** | Fan-out one prompt to many peers (`consult_agents`) |
+| **JSON Canvas** | Export topology for Obsidian / any [JSON Canvas](https://jsoncanvas.org/) tool |
+| **Desktop UI** | Dark fabric console · i18n · collapsible inspector |
+
+## How it fits
 
 ```
-┌─────────────┐   MCP / WS    ┌──────────────────────┐
-│  Agents     │◄─────────────►│  Local Hub           │
-│  (scanned)  │               │  inventory · bus ·   │
-└─────────────┘               │  context · MCP       │
-                              └──────────┬───────────┘
-                                         │
-                              ┌──────────▼───────────┐
-                              │  Desktop fabric UI   │
-                              │  (Electron + Hub)    │
-                              └──────────────────────┘
+┌──────────────┐  MCP / WS   ┌─────────────────────┐
+│  Agents      │◄───────────►│  Local Hub          │
+│  (sessions)  │             │  inventory · bus ·  │
+└──────────────┘             │  context · mailbox  │
+                             └──────────┬──────────┘
+                                        │
+                             ┌──────────▼──────────┐
+                             │  Desktop fabric UI  │
+                             └─────────────────────┘
 ```
 
-**Compatibility layers**
-
-1. **Passive discovery** — no agent changes required to appear in inventory  
-2. **MCP** — `list_agents`, `send_message`, `context_*`, `scan_agents`  
+1. **Passive discovery** — appear in inventory with no code changes  
+2. **MCP** — `list_agents`, `send_message`, `consult_agents`, `fabric_brief`, `context_*`, `fabric_canvas`…  
 3. **WS JSON-RPC** — `a2a.register` / `a2a.send` / `a2a.listAgents`  
-4. **Importers** — read-only Claude JSONL, Codex rollouts, Cursor transcripts  
+4. **Importers** — Claude JSONL, Codex rollouts, Cursor transcripts (read-only)
 
 Details: [Agent Integration](docs/agent-integration.md) · [API Reference](docs/api-reference.md)
+
+## MCP snippet
+
+```json
+{
+  "mcpServers": {
+    "huinet": {
+      "command": "huinet",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Or: `huinet mcp install-config --write` (Claude / Cursor / Codex adapters).
 
 ## Data on disk
 
@@ -111,41 +147,36 @@ Details: [Agent Integration](docs/agent-integration.md) · [API Reference](docs/
 ~/.huinet/
   config.json
   inventory.json
-  network-access.json     # which agents are open on A2A
-  daemon.pid
-  desktop.pid
-  token
+  network-access.json    # A2A open set
+  brief.json
   context/memories/…
-```
-
-## Development
-
-```bash
-npm run dev:daemon                # Hub in the foreground
-npm run build:ui                  # Vite UI → apps/desktop/dist
-cd apps/desktop && npm run desktop  # Electron (starts Hub if needed)
-npm test
 ```
 
 ## Scope
 
-**In**
+| In | Out (for now) |
+|----|----------------|
+| Same-machine fabric, MCP, desktop UI | Cross-LAN / public P2P without a relay |
+| Session import / migrate / brief | Replacing Magpie-style model gateways |
+| Local consult + canvas export | Cloud accounts & sync |
 
-- Same-machine fabric, MCP, local UI, session import / migrate  
+Legacy P2P notes: [`docs/archive/`](docs/archive/).
 
-**Out (for now)**
+## Contributing
 
-- Cross-LAN / public P2P without a relay  
-- Replacing Magpie / CC Switch model gateways  
-- Cloud sync and accounts  
+Issues and PRs welcome. Prefer small, reviewable changes:
 
-Legacy P2P notes live under [`docs/archive/`](docs/archive/).
+1. `npm test` and `npm run build && npm run build:ui`  
+2. Keep Hub local-only (`127.0.0.1`) unless the change is explicitly about networking  
+3. Match existing TypeScript / desktop patterns; update `README.md` **and** `README.zh-CN.md` when user-facing
 
 ## Related
 
-If you need **model routing**, look at [Magpie](https://github.com/yetone/magpie) or [CC Switch](https://github.com/farion1231/cc-switch).  
-If you need **peer chat between MCP agents**, see projects like agent-comm-hub / AgentMux.  
-HuiNet sits beside them: **the local network graph and shared memory**, not the provider switchboard.
+| Need | Project |
+|------|---------|
+| Model / plan pooling | [Magpie](https://github.com/yetone/magpie) |
+| Provider switch UI | [CC Switch](https://github.com/farion1231/cc-switch) |
+| Local agent fabric + shared memory | **HuiNet** (this repo) |
 
 ## License
 

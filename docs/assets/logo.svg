@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="HuiNet">
+  <rect width="128" height="128" rx="28" fill="#111111"/>
+  <!-- peer triangle pointing right; accent on the tip (not a hub) -->
+  <line x1="38" y1="40" x2="38" y2="88" stroke="#3A4556" stroke-width="3" stroke-linecap="round"/>
+  <line x1="38" y1="40" x2="94" y2="64" stroke="#4A5A70" stroke-width="3" stroke-linecap="round"/>
+  <line x1="38" y1="88" x2="94" y2="64" stroke="#5B9CFF" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="38" cy="40" r="8" fill="#9AA3B2"/>
+  <circle cx="38" cy="88" r="8" fill="#9AA3B2"/>
+  <circle cx="94" cy="64" r="10" fill="#5B9CFF"/>
+</svg>

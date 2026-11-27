@@ -33,9 +33,53 @@ export interface Agent {
   signals?: string[];
   online?: boolean;
   connected?: boolean;
+  kind?: 'runtime' | 'session';
+  parentId?: string;
+  sessionId?: string;
+  title?: string;
+  project?: string;
+  mtime?: number;
   a2aOpen?: boolean;
   mcpSupported?: boolean;
   mcpWired?: boolean;
+  wsConnected?: boolean;
+  unreadMail?: number;
+  lastHeartbeat?: number;
+}
+
+export interface FabricTask {
+  id: string;
+  from: string;
+  to: string;
+  title: string;
+  description?: string;
+  status: string;
+  result?: unknown;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface MailItem {
+  id: string;
+  agentId: string;
+  message: BusMessage;
+  read: boolean;
+  deliveredAt: number;
+}
+
+export interface FabricBrief {
+  updatedAt: number;
+  memories: Array<{
+    id: string;
+    kind: string;
+    title: string;
+    body: string;
+    pinnedAt: number;
+    pinnedBy: string;
+    note?: string;
+  }>;
+  markdown: string;
 }
 
 export interface Memory {
@@ -47,6 +91,9 @@ export interface Memory {
   project?: string;
   updatedAt: number;
   tags: string[];
+  links?: string[];
+  via?: string;
+  score?: number;
 }
 
 export interface BusMessage {
@@ -72,6 +119,8 @@ export interface HubStatus {
   connectedAgents: number;
   inventoryCount: number;
   memoryCount: number;
+  openTasks?: number;
+  unreadMail?: number;
   pid?: number;
 }
 
@@ -109,19 +158,28 @@ export const api = {
       '/api/agents/disconnect-all',
       { method: 'POST', json: {} }
     ),
-  memories: (q?: string) =>
-    request<{ memories: Memory[] }>(
-      q ? `/api/context?q=${encodeURIComponent(q)}` : '/api/context'
+  memories: (q?: string, project?: string) => {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (project) params.set('project', project);
+    const qs = params.toString();
+    return request<{ memories: Memory[] }>(
+      `/api/context${qs ? `?${qs}` : ''}`
+    );
+  },
+  relatedMemories: (id: string) =>
+    request<{ memory: Memory; related: Memory[] }>(
+      `/api/context/${encodeURIComponent(id)}/related`
     ),
   importSessions: (from: string) =>
     request<{ imported: number; skipped: number }>('/api/context/import', {
       method: 'POST',
       json: { from, limit: 20 },
     }),
-  migrate: () =>
+  migrate: (project?: string) =>
     request<{ markdown: string; memories: Memory[] }>('/api/context/migrate', {
       method: 'POST',
-      json: {},
+      json: project ? { project } : {},
     }),
   upsert: (body: {
     kind: string;
@@ -147,11 +205,114 @@ export const api = {
         tokens,
       },
     }),
+  consult: (to: string[], message: string, project?: string) =>
+    request<{
+      ok: boolean;
+      delivered: number;
+      peers: string[];
+    }>('/api/bus/consult', {
+      method: 'POST',
+      json: { to, message, from: 'ui', project },
+    }),
+  fabricCanvas: (openOnly = false) =>
+    request<{
+      nodes: unknown[];
+      edges: unknown[];
+      markdown: string;
+      meta: { generatedAt: number };
+    }>(`/api/fabric/canvas${openOnly ? '?open=1' : ''}`),
   mcpConfig: () => request<Record<string, unknown>>('/api/mcp/config'),
   mcpStatus: () =>
     request<{ claude: boolean; cursor: boolean; codex: boolean }>(
       '/api/mcp/status'
     ),
+  mailbox: (agentId: string, unreadOnly = true) =>
+    request<{ agentId: string; unread: number; items: MailItem[] }>(
+      `/api/mailbox?agentId=${encodeURIComponent(agentId)}${
+        unreadOnly ? '&unread=1' : ''
+      }`
+    ),
+  mailboxRead: (agentId: string, opts?: { ids?: string[]; all?: boolean }) =>
+    request<{ marked: number; unread: number }>('/api/mailbox/read', {
+      method: 'POST',
+      json: { agentId, ...opts },
+    }),
+  tasks: (params?: { to?: string; status?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.to) q.set('to', params.to);
+    if (params?.status) q.set('status', params.status);
+    const qs = q.toString();
+    return request<{
+      tasks: FabricTask[];
+      summary: { open: number; completed: number; failed: number };
+    }>(`/api/tasks${qs ? `?${qs}` : ''}`);
+  },
+  createTask: (body: {
+    to: string;
+    title: string;
+    description?: string;
+    from?: string;
+  }) =>
+    request<FabricTask>('/api/tasks', {
+      method: 'POST',
+      json: body,
+    }),
+  completeTask: (
+    taskId: string,
+    body: { status?: string; result?: unknown; error?: string }
+  ) =>
+    request<FabricTask>(`/api/tasks/${encodeURIComponent(taskId)}`, {
+      method: 'POST',
+      json: body,
+    }),
+  brief: (project?: string) =>
+    request<FabricBrief>(
+      project
+        ? `/api/brief?project=${encodeURIComponent(project)}`
+        : '/api/brief'
+    ),
+  pinBrief: (memoryId: string, note?: string) =>
+    request<FabricBrief>('/api/brief/pin', {
+      method: 'POST',
+      json: { memoryId, pinnedBy: 'ui', note },
+    }),
+  unpinBrief: (memoryId: string) =>
+    request<FabricBrief>('/api/brief/unpin', {
+      method: 'POST',
+      json: { memoryId },
+    }),
+  agentCard: (agentId: string) =>
+    request<Record<string, unknown>>(
+      `/api/agents/${encodeURIComponent(agentId)}/card`
+    ),
+  netFetch: (body: {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    timeoutMs?: number;
+  }) =>
+    request<{
+      ok: boolean;
+      status: number;
+      statusText: string;
+      url: string;
+      body: string;
+      truncated: boolean;
+      ms: number;
+    }>('/api/net/fetch', { method: 'POST', json: body }),
+  terminalRun: (command: string, cwd?: string) =>
+    request<{
+      ok: boolean;
+      code: number | null;
+      stdout: string;
+      stderr: string;
+      ms: number;
+      command: string;
+    }>('/api/terminal/run', {
+      method: 'POST',
+      json: { command, cwd },
+    }),
 };
 
 export { API_BASE };

@@ -28,10 +28,19 @@ import { MessageBus, type BusMessage } from './bus';
 import {
   isA2aOpen,
   loadNetworkAccess,
+  pruneA2aOpen,
   setA2aOpen,
   setManyA2aOpen,
 } from './network-access';
 import { HubRPC, A2AMethod, type JSONRPCRequest } from './rpc';
+import { createMailbox, type Mailbox } from './mailbox';
+import { createTaskBoard, type TaskBoard } from './tasks';
+import { createFabricBrief, type FabricBriefStore } from './brief';
+import { buildFabricCanvas } from './json-canvas';
+import { buildAgentCard, buildHubCard } from './agent-card';
+import { netFetch } from './net-bridge';
+import { runTerminal } from './terminal';
+import { linksOf } from '../context/links';
 
 export interface EnrichedAgent {
   id: string;
@@ -45,12 +54,22 @@ export interface EnrichedAgent {
   signals?: string[];
   online?: boolean;
   connected?: boolean;
+  kind?: 'runtime' | 'session';
+  parentId?: string;
+  sessionId?: string;
+  title?: string;
+  project?: string;
+  mtime?: number;
   /** Open to same-machine A2A fabric */
   a2aOpen: boolean;
   /** Can install HuiNet MCP */
   mcpSupported: boolean;
   /** MCP config already written */
   mcpWired: boolean;
+  /** Live WebSocket registration on the hub */
+  wsConnected: boolean;
+  lastHeartbeat?: number;
+  unreadMail?: number;
 }
 
 export interface LocalHubStatus {
@@ -61,6 +80,8 @@ export interface LocalHubStatus {
   connectedAgents: number;
   inventoryCount: number;
   memoryCount: number;
+  openTasks?: number;
+  unreadMail?: number;
   startedAt?: number;
 }
 
@@ -71,6 +92,9 @@ export class LocalHub extends EventEmitter {
   private bus: MessageBus;
   private scanner: AgentScanner;
   private context: ContextStore;
+  private mailbox: Mailbox;
+  private tasks: TaskBoard;
+  private brief: FabricBriefStore;
   private httpServer: http.Server | null = null;
   private wss: WebSocketServer | null = null;
   private wsClients = new Map<string, WebSocket>();
@@ -88,8 +112,12 @@ export class LocalHub extends EventEmitter {
     this.bus = new MessageBus(this.directory, this.paths);
     this.scanner = createAgentScanner({ paths: this.paths });
     this.context = createContextStore(this.paths);
+    this.mailbox = createMailbox(this.paths);
+    this.tasks = createTaskBoard(this.paths);
+    this.brief = createFabricBrief(this.paths, this.context);
 
     this.bus.on('message', (msg: BusMessage) => {
+      this.depositMailbox(msg);
       this.fanoutBusMessage(msg);
       this.emit('busMessage', msg);
     });
@@ -220,10 +248,15 @@ export class LocalHub extends EventEmitter {
     this.scanner.setConnected(this.directory.getConnected().map((a) => a.id));
     const snap = await this.scanner.scan();
     this.directory.setInventory(snap.agents);
+    pruneA2aOpen(
+      snap.agents.map((a) => a.id),
+      this.paths
+    );
     return snap;
   }
 
   getStatus(): LocalHubStatus {
+    const taskSummary = this.tasks.summary();
     return {
       running: this.running,
       httpUrl: `http://${this.config.host}:${this.config.httpPort}`,
@@ -232,6 +265,8 @@ export class LocalHub extends EventEmitter {
       connectedAgents: this.directory.getConnected().length,
       inventoryCount: this.directory.getInventory().length,
       memoryCount: this.context.list({ limit: 10000 }).length,
+      openTasks: taskSummary.open,
+      unreadMail: this.mailbox.unreadCount(),
       startedAt: this.startedAt || undefined,
     };
   }
@@ -240,13 +275,35 @@ export class LocalHub extends EventEmitter {
     const access = loadNetworkAccess(this.paths);
     return this.directory.listAll().map((a) => {
       const mcpTarget = agentIdToMcpTarget(a.id);
+      const parentId = a.parentId;
+      const live =
+        this.directory.get(a.id) ||
+        (parentId ? this.directory.get(parentId) : undefined);
+      const wsConnected =
+        this.wsClients.has(a.id) ||
+        (parentId ? this.wsClients.has(parentId) : false);
+      const a2aOpen = Boolean(
+        access.a2aOpen[a.id] ||
+          (parentId ? access.a2aOpen[parentId] : false)
+      );
       return {
         ...a,
-        a2aOpen: Boolean(access.a2aOpen[a.id]),
+        a2aOpen,
         mcpSupported: mcpTarget !== null,
         mcpWired: mcpTarget ? isMcpWired(mcpTarget) : false,
+        wsConnected,
+        online: wsConnected || Boolean(a.online),
+        lastHeartbeat: live?.lastHeartbeat,
+        unreadMail: this.mailbox.unreadCount(a.id),
       };
     });
+  }
+
+  private hubUrls(): { httpUrl: string; wsUrl: string } {
+    return {
+      httpUrl: `http://${this.config.host}:${this.config.httpPort}`,
+      wsUrl: `ws://${this.config.host}:${this.config.wsPort}`,
+    };
   }
 
   /** Agents visible on the A2A fabric (open switch on) */
@@ -339,6 +396,8 @@ export class LocalHub extends EventEmitter {
         const body = JSON.parse(await this.readBody(req)) as { open?: boolean };
         const open = Boolean(body.open);
         const mcpTarget = agentIdToMcpTarget(id);
+        const found = this.directory.listAll().find((a) => a.id === id);
+        const parentId = found?.parentId;
 
         let wireResult = null;
         if (open && mcpTarget) {
@@ -348,6 +407,8 @@ export class LocalHub extends EventEmitter {
           );
         }
         setA2aOpen(id, open, this.paths);
+        // Session nodes share the product MCP — keep parent flag in sync
+        if (parentId) setA2aOpen(parentId, open, this.paths);
 
         const agent = this.enrichAgents().find((a) => a.id === id);
         this.json(res, 200, {
@@ -362,8 +423,21 @@ export class LocalHub extends EventEmitter {
         return;
       }
 
-      if (p.startsWith('/api/agents/') && req.method === 'GET') {
-        const id = decodeURIComponent(p.slice('/api/agents/'.length));
+      const agentCardEarly = p.match(/^\/api\/agents\/([^/]+)\/card$/);
+      if (agentCardEarly && req.method === 'GET') {
+        const id = decodeURIComponent(agentCardEarly[1]);
+        const agent = this.enrichAgents().find((a) => a.id === id);
+        if (!agent) {
+          this.json(res, 404, { error: 'not found' });
+          return;
+        }
+        this.json(res, 200, buildAgentCard(agent, this.hubUrls()));
+        return;
+      }
+
+      const agentGet = p.match(/^\/api\/agents\/([^/]+)$/);
+      if (agentGet && req.method === 'GET') {
+        const id = decodeURIComponent(agentGet[1]);
         const agent = this.enrichAgents().find((a) => a.id === id);
         if (!agent) {
           this.json(res, 404, { error: 'not found' });
@@ -407,20 +481,302 @@ export class LocalHub extends EventEmitter {
         return;
       }
 
+      // Multi-agent consult: fan-out one prompt to selected peers
+      if (p === '/api/bus/consult' && req.method === 'POST') {
+        const body = JSON.parse(await this.readBody(req)) as {
+          to?: string[];
+          message?: string;
+          from?: string;
+          project?: string;
+        };
+        const targets = (body.to || []).filter(Boolean);
+        const text = String(body.message || '').trim();
+        if (!targets.length || !text) {
+          this.json(res, 400, { error: 'to[] and message required' });
+          return;
+        }
+        const from = body.from || 'ui';
+        const messages = targets.map((to) =>
+          this.bus.publish({
+            from,
+            to,
+            type: 'consult',
+            payload: {
+              text,
+              consult: true,
+              peers: targets,
+              project: body.project,
+            },
+          })
+        );
+        this.json(res, 200, {
+          ok: true,
+          delivered: messages.length,
+          peers: targets,
+          messages,
+        });
+        return;
+      }
+
+      if (p === '/api/fabric/canvas' && req.method === 'GET') {
+        const openOnly = url.searchParams.get('open') === '1';
+        let agents = this.enrichAgents();
+        if (openOnly) agents = agents.filter((a) => a.a2aOpen);
+        // Prefer session nodes when present
+        const parents = new Set(
+          agents
+            .filter((a) => a.kind === 'session' && a.parentId)
+            .map((a) => a.parentId!)
+        );
+        agents = agents.filter(
+          (a) => a.kind === 'session' || !parents.has(a.id)
+        );
+        const canvas = buildFabricCanvas({
+          agents,
+          messages: this.bus.getRecent(200),
+        });
+        this.json(res, 200, canvas);
+        return;
+      }
+
+      // --- Mailbox (MCP-friendly inbox) ---
+      if (p === '/api/mailbox' && req.method === 'GET') {
+        const agentId = url.searchParams.get('agentId');
+        if (!agentId) {
+          this.json(res, 400, { error: 'agentId required' });
+          return;
+        }
+        const unreadOnly = url.searchParams.get('unread') === '1';
+        const items = this.mailbox.list(agentId, { unreadOnly, limit: 50 });
+        this.json(res, 200, {
+          agentId,
+          unread: this.mailbox.unreadCount(agentId),
+          items,
+        });
+        return;
+      }
+
+      if (p === '/api/mailbox/read' && req.method === 'POST') {
+        const body = JSON.parse(await this.readBody(req)) as {
+          agentId?: string;
+          ids?: string[];
+          all?: boolean;
+        };
+        if (!body.agentId) {
+          this.json(res, 400, { error: 'agentId required' });
+          return;
+        }
+        const marked = body.all
+          ? this.mailbox.markAllRead(body.agentId)
+          : this.mailbox.markRead(body.ids || [], body.agentId);
+        this.json(res, 200, {
+          marked,
+          unread: this.mailbox.unreadCount(body.agentId),
+        });
+        return;
+      }
+
+      // --- Fabric tasks ---
+      if (p === '/api/tasks' && req.method === 'GET') {
+        const to = url.searchParams.get('to') || undefined;
+        const from = url.searchParams.get('from') || undefined;
+        const status = url.searchParams.get('status') || undefined;
+        this.json(res, 200, {
+          tasks: this.tasks.list({
+            to,
+            from,
+            status: status as never,
+            limit: 50,
+          }),
+          summary: this.tasks.summary(),
+        });
+        return;
+      }
+
+      if (p === '/api/tasks' && req.method === 'POST') {
+        const body = JSON.parse(await this.readBody(req)) as {
+          from?: string;
+          to?: string;
+          title?: string;
+          description?: string;
+          notify?: boolean;
+        };
+        if (!body.to || !body.title) {
+          this.json(res, 400, { error: 'to and title required' });
+          return;
+        }
+        const from = body.from || 'ui';
+        let messageId: string | undefined;
+        if (body.notify !== false) {
+          const msg = this.bus.publish({
+            from,
+            to: body.to,
+            type: 'task_request',
+            payload: {
+              title: body.title,
+              description: body.description,
+            },
+          });
+          messageId = msg.id;
+        }
+        const task = this.tasks.create({
+          from,
+          to: body.to,
+          title: body.title,
+          description: body.description,
+          messageId,
+        });
+        this.json(res, 200, task);
+        return;
+      }
+
+      const taskMatch = p.match(/^\/api\/tasks\/([^/]+)$/);
+      if (taskMatch && req.method === 'GET') {
+        const task = this.tasks.get(decodeURIComponent(taskMatch[1]));
+        if (!task) {
+          this.json(res, 404, { error: 'not found' });
+          return;
+        }
+        this.json(res, 200, task);
+        return;
+      }
+
+      if (taskMatch && req.method === 'POST') {
+        const id = decodeURIComponent(taskMatch[1]);
+        const body = JSON.parse(await this.readBody(req)) as {
+          status?: string;
+          result?: unknown;
+          error?: string;
+        };
+        let task;
+        if (body.status === 'completed') {
+          task = this.tasks.complete(id, body.result);
+        } else if (body.status === 'failed') {
+          task = this.tasks.fail(id, String(body.error || 'failed'));
+        } else if (body.status) {
+          task = this.tasks.update(id, {
+            status: body.status as never,
+            result: body.result,
+            error: body.error,
+          });
+        } else {
+          task = this.tasks.update(id, {
+            result: body.result,
+            error: body.error,
+          });
+        }
+        if (body.status === 'completed' || body.status === 'failed') {
+          this.bus.publish({
+            from: task.to,
+            to: task.from,
+            type: 'task_result',
+            payload: {
+              taskId: task.id,
+              status: task.status,
+              result: task.result,
+              error: task.error,
+            },
+          });
+        }
+        this.json(res, 200, task);
+        return;
+      }
+
+      // --- Fabric brief (pinned working set) ---
+      if (p === '/api/brief' && req.method === 'GET') {
+        const project = url.searchParams.get('project') || undefined;
+        this.json(res, 200, this.brief.get({ project }));
+        return;
+      }
+
+      if (p === '/api/brief/pin' && req.method === 'POST') {
+        const body = JSON.parse(await this.readBody(req)) as {
+          memoryId?: string;
+          pinnedBy?: string;
+          note?: string;
+        };
+        if (!body.memoryId) {
+          this.json(res, 400, { error: 'memoryId required' });
+          return;
+        }
+        this.json(
+          res,
+          200,
+          this.brief.pin(body.memoryId, body.pinnedBy || 'ui', body.note)
+        );
+        return;
+      }
+
+      if (p === '/api/brief/unpin' && req.method === 'POST') {
+        const body = JSON.parse(await this.readBody(req)) as {
+          memoryId?: string;
+        };
+        if (!body.memoryId) {
+          this.json(res, 400, { error: 'memoryId required' });
+          return;
+        }
+        this.json(res, 200, this.brief.unpin(body.memoryId));
+        return;
+      }
+
+      if (p === '/api/brief/clear' && req.method === 'POST') {
+        this.json(res, 200, this.brief.clear());
+        return;
+      }
+
+      // --- Agent / Hub cards ---
+      if (
+        (p === '/.well-known/agent.json' || p === '/api/card') &&
+        req.method === 'GET'
+      ) {
+        this.json(
+          res,
+          200,
+          buildHubCard({ ...this.hubUrls(), agents: this.enrichAgents() })
+        );
+        return;
+      }
+
       if (p === '/api/context' && req.method === 'GET') {
         const project = url.searchParams.get('project') || undefined;
         const q = url.searchParams.get('q');
         const entries = q
-          ? this.context.search(q)
+          ? this.context.search(q, 20, { project })
           : this.context.list({ project, limit: 100 });
-        this.json(res, 200, { memories: entries });
+        this.json(res, 200, {
+          memories: entries.map((m) => ({
+            ...m,
+            links: linksOf(m),
+          })),
+        });
         return;
       }
 
       if (p === '/api/context' && req.method === 'POST') {
         const body = JSON.parse(await this.readBody(req));
         const entry = this.context.upsert(body);
-        this.json(res, 200, entry);
+        this.json(res, 200, { ...entry, links: linksOf(entry) });
+        return;
+      }
+
+      const ctxRelated = p.match(/^\/api\/context\/([^/]+)\/related$/);
+      if (ctxRelated && req.method === 'GET') {
+        const id = decodeURIComponent(ctxRelated[1]);
+        const seed = this.context.get(id);
+        if (!seed) {
+          this.json(res, 404, { error: 'not found' });
+          return;
+        }
+        const related = this.context.related(id);
+        this.json(res, 200, {
+          memory: { ...seed, links: linksOf(seed) },
+          related: related.map((r) => ({
+            ...r.memory,
+            links: linksOf(r.memory),
+            via: r.via,
+            score: r.score,
+          })),
+        });
         return;
       }
 
@@ -455,6 +811,70 @@ export class LocalHub extends EventEmitter {
         this.json(res, 200, this.runDoctor());
         return;
       }
+
+      // Outbound internet for agents (hub listens locally, fetches publicly)
+      if (p === '/api/net/fetch' && req.method === 'POST') {
+        const body = JSON.parse(await this.readBody(req)) as {
+          url?: string;
+          method?: string;
+          headers?: Record<string, string>;
+          body?: string;
+          timeoutMs?: number;
+        };
+        if (!body.url) {
+          this.json(res, 400, { error: 'url required' });
+          return;
+        }
+        try {
+          const result = await netFetch({
+            url: body.url,
+            method: body.method,
+            headers: body.headers,
+            body: body.body,
+            timeoutMs: body.timeoutMs,
+          });
+          this.bus.publish({
+            from: 'hub-net',
+            to: '*',
+            type: 'net_fetch',
+            payload: {
+              url: result.url,
+              status: result.status,
+              ms: result.ms,
+              truncated: result.truncated,
+            },
+          });
+          this.json(res, 200, result);
+        } catch (err) {
+          this.json(res, 400, { error: (err as Error).message });
+        }
+        return;
+      }
+
+      // Local terminal runner for desktop panel
+      if (p === '/api/terminal/run' && req.method === 'POST') {
+        const body = JSON.parse(await this.readBody(req)) as {
+          command?: string;
+          cwd?: string;
+          timeoutMs?: number;
+        };
+        if (!body.command) {
+          this.json(res, 400, { error: 'command required' });
+          return;
+        }
+        try {
+          const result = await runTerminal({
+            command: body.command,
+            cwd: body.cwd,
+            timeoutMs: body.timeoutMs,
+          });
+          this.json(res, 200, result);
+        } catch (err) {
+          this.json(res, 400, { error: (err as Error).message });
+        }
+        return;
+      }
+
 
       if (p === '/api/mcp/config' && req.method === 'GET') {
         this.json(res, 200, this.buildMcpConfigSnippet());
@@ -586,9 +1006,11 @@ export class LocalHub extends EventEmitter {
     const opened: string[] = [];
     const updates: Record<string, boolean> = {};
 
+    const seenMcp = new Set<string>();
     for (const agent of this.enrichAgents()) {
       const target = agentIdToMcpTarget(agent.id);
-      if (target) {
+      if (target && !seenMcp.has(target)) {
+        seenMcp.add(target);
         wired.push(wireMcpTarget(target, spec));
       }
       updates[agent.id] = true;
@@ -641,6 +1063,16 @@ export class LocalHub extends EventEmitter {
       {
         name: `记忆条目（${this.context.list({ limit: 10000 }).length}）`,
         pass: true,
+      },
+      {
+        name: `开放任务（${this.tasks.summary().open}）`,
+        pass: true,
+        detail: 'huinet tasks / 协作页',
+      },
+      {
+        name: `未读邮件（${this.mailbox.unreadCount()}）`,
+        pass: true,
+        detail: 'MCP inbox_check',
       },
     ];
     return { ok: checks.every((c) => c.pass), checks };
@@ -779,13 +1211,75 @@ export class LocalHub extends EventEmitter {
 
       case A2AMethod.TASK_EXECUTE: {
         const to = params.to as string;
+        if (to !== '*' && !isA2aOpen(to, this.paths) && to !== from) {
+          throw new Error(`Agent ${to} is not open on A2A network`);
+        }
+        const title =
+          String(params.title || params.goal || params.description || 'task');
         const msg = this.bus.publish({
           from,
           to,
           type: 'task_request',
           payload: params,
         });
-        return { accepted: true, messageId: msg.id };
+        const task = this.tasks.create({
+          from,
+          to,
+          title,
+          description:
+            typeof params.description === 'string'
+              ? params.description
+              : undefined,
+          messageId: msg.id,
+        });
+        return { accepted: true, taskId: task.id, messageId: msg.id, task };
+      }
+
+      case A2AMethod.TASK_RESULT: {
+        const taskId = String(params.taskId || '');
+        if (!taskId) throw new Error('taskId required');
+        const status = String(params.status || 'completed');
+        const task =
+          status === 'failed'
+            ? this.tasks.fail(taskId, String(params.error || 'failed'))
+            : this.tasks.complete(taskId, params.result);
+        this.bus.publish({
+          from,
+          to: task.from,
+          type: 'task_result',
+          payload: {
+            taskId: task.id,
+            status: task.status,
+            result: task.result,
+            error: task.error,
+          },
+        });
+        return { ok: true, task };
+      }
+
+      case 'a2a.mailbox.list':
+        return {
+          items: this.mailbox.list(String(params.agentId || from), {
+            unreadOnly: Boolean(params.unreadOnly),
+          }),
+        };
+
+      case 'a2a.mailbox.read':
+        return {
+          marked: this.mailbox.markRead(
+            (params.ids as string[]) || [],
+            String(params.agentId || from)
+          ),
+        };
+
+      case 'a2a.brief.get':
+        return this.brief.get();
+
+      case 'a2a.card': {
+        const id = String(params.agentId || from);
+        const agent = this.enrichAgents().find((a) => a.id === id);
+        if (!agent) throw new Error(`Agent not found: ${id}`);
+        return buildAgentCard(agent, this.hubUrls());
       }
 
       case 'context.search':
@@ -814,6 +1308,20 @@ export class LocalHub extends EventEmitter {
         throw Object.assign(new Error(`Method not found: ${method}`), {
           code: -32601,
         });
+    }
+  }
+
+  private depositMailbox(msg: BusMessage): void {
+    const recipients =
+      msg.to === '*'
+        ? this.enrichAgents()
+            .filter((a) => a.a2aOpen && a.id !== msg.from)
+            .map((a) => a.id)
+        : msg.to && msg.to !== 'hub' && msg.to !== 'ui'
+          ? [msg.to]
+          : [];
+    if (recipients.length) {
+      this.mailbox.deposit(msg, recipients);
     }
   }
 

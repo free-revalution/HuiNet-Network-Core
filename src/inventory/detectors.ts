@@ -1,5 +1,8 @@
 /**
  * Built-in detectors for mainstream local AI agents
+ *
+ * Rule: leftover config dirs alone do NOT count as installed.
+ * Need a real binary, app bundle, or a live process.
  */
 
 import { execFileSync, execSync } from 'child_process';
@@ -44,23 +47,40 @@ function tryVersion(binary: string, args = ['--version']): string | undefined {
   }
 }
 
-function processRunning(patterns: string[]): boolean {
+/** Full process argument list (more precise than short comm names). */
+function processArgsSnapshot(): string {
   try {
     const cmd =
       process.platform === 'win32'
-        ? 'tasklist'
-        : process.platform === 'darwin'
-          ? 'ps -axo comm='
-          : 'ps -eo comm=';
-    const out = execSync(cmd, {
+        ? 'wmic process get CommandLine'
+        : 'ps -axo args=';
+    return execSync(cmd, {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 5000,
+      maxBuffer: 8 * 1024 * 1024,
     }).toLowerCase();
-    return patterns.some((p) => out.includes(p.toLowerCase()));
   } catch {
-    return false;
+    return '';
   }
+}
+
+/**
+ * True if a live process matches includes and none of excludes.
+ * Excludes kill false positives from nested node_modules / leftover workers.
+ */
+function processRunning(
+  includes: string[],
+  excludes: string[] = ['node_modules', '/.openclaw/', 'openclaw-']
+): boolean {
+  const out = processArgsSnapshot();
+  if (!out) return false;
+  const lines = out.split(/\r?\n/);
+  return lines.some((line) => {
+    if (!line.trim()) return false;
+    if (excludes.some((e) => line.includes(e.toLowerCase()))) return false;
+    return includes.some((p) => line.includes(p.toLowerCase()));
+  });
 }
 
 function base(
@@ -82,7 +102,8 @@ function homeSignal(
   binaryNames: string[],
   sessionRel: string | undefined,
   capabilities: AgentCapability[],
-  processNames: string[]
+  processIncludes: string[],
+  processExcludes?: string[]
 ): AgentDetector {
   return {
     id,
@@ -109,15 +130,13 @@ function homeSignal(
       if (sessionDir && exists(sessionDir)) {
         signals.push(`sessions:${sessionRel}`);
       }
-      const running = processRunning(processNames);
+      const running = processRunning(processIncludes, processExcludes);
       if (running) signals.push('process:running');
 
-      if (signals.length === 0) return null;
+      // Remnant ~/.foo alone is NOT enough — need binary or live process
+      if (!binaryPath && !running) return null;
 
       let presence: DiscoveredAgent['presence'] = 'installed';
-      if (!binaryPath && !exists(homeDir)) {
-        presence = 'unknown';
-      }
       if (running) presence = 'running';
 
       return base({
@@ -143,7 +162,8 @@ export const BUILTIN_DETECTORS: AgentDetector[] = [
     ['claude'],
     '.claude/projects',
     ['mcp', 'skills', 'sessions', 'cli'],
-    ['claude']
+    ['claude'],
+    ['node_modules', 'claude.app', 'claude helper']
   ),
   homeSignal(
     'codex',
@@ -152,7 +172,8 @@ export const BUILTIN_DETECTORS: AgentDetector[] = [
     ['codex'],
     '.codex/sessions',
     ['mcp', 'skills', 'sessions', 'cli'],
-    ['codex']
+    ['codex'],
+    ['node_modules', '/.openclaw/', 'openclaw-', 'codex++']
   ),
   {
     id: 'cursor',
@@ -161,9 +182,11 @@ export const BUILTIN_DETECTORS: AgentDetector[] = [
       const home = os.homedir();
       const signals: string[] = [];
       const cursorHome = path.join(home, '.cursor');
+      const macApp = '/Applications/Cursor.app';
       const binaryPath =
         which('cursor-agent') || which('cursor') || undefined;
       if (binaryPath) signals.push('path:cursor');
+      if (exists(macApp)) signals.push('app:Cursor.app');
       if (exists(cursorHome)) signals.push('home:.cursor');
 
       const macAppSupport = path.join(
@@ -186,9 +209,22 @@ export const BUILTIN_DETECTORS: AgentDetector[] = [
       if (exists(chatsDir)) sessionDir = chatsDir;
       else if (exists(transcripts)) sessionDir = transcripts;
 
-      const running = processRunning(['Cursor', 'cursor', 'cursor-agent']);
+      const running = processRunning(
+        ['/applications/cursor.app', 'cursor-agent', 'cursor helper'],
+        [
+          'node_modules/electron',
+          'huinet/apps/desktop',
+          'cursoruiviewservice',
+        ]
+      );
       if (running) signals.push('process:running');
-      if (signals.length === 0) return null;
+
+      // Need app, CLI, or live Cursor — not just ~/.cursor crumbs
+      if (!binaryPath && !exists(macApp) && !running && !ideHome) return null;
+      if (!binaryPath && !exists(macApp) && !running) {
+        // Application Support alone can be remnant if app deleted
+        return null;
+      }
 
       return base({
         id: 'cursor',
@@ -219,7 +255,8 @@ export const BUILTIN_DETECTORS: AgentDetector[] = [
     ['openclaw'],
     '.openclaw',
     ['mcp', 'skills', 'cli'],
-    ['openclaw']
+    ['openclaw'],
+    ['node_modules']
   ),
   homeSignal(
     'gemini',
@@ -246,7 +283,7 @@ export const BUILTIN_DETECTORS: AgentDetector[] = [
     ['windsurf'],
     '.codeium/windsurf',
     ['mcp', 'skills', 'ide'],
-    ['Windsurf', 'windsurf']
+    ['windsurf']
   ),
   homeSignal(
     'kiro',
@@ -255,7 +292,7 @@ export const BUILTIN_DETECTORS: AgentDetector[] = [
     ['kiro'],
     undefined,
     ['skills', 'ide'],
-    ['Kiro', 'kiro']
+    ['kiro']
   ),
   {
     id: 'claude-desktop',
@@ -267,9 +304,13 @@ export const BUILTIN_DETECTORS: AgentDetector[] = [
       const support = path.join(home, 'Library/Application Support/Claude');
       if (exists(macApp)) signals.push('app:Claude.app');
       if (exists(support)) signals.push('home:Application Support/Claude');
-      const running = processRunning(['Claude']);
+      const running = processRunning(
+        ['/applications/claude.app', 'claude helper'],
+        ['node_modules', 'claude-code']
+      );
       if (running) signals.push('process:running');
-      if (signals.length === 0) return null;
+      // Support folder alone = remnant
+      if (!exists(macApp) && !running) return null;
       return base({
         id: 'claude-desktop',
         name: 'Claude Desktop',

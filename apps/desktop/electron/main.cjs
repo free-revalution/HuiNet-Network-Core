@@ -128,20 +128,18 @@ function createWindow() {
   const isMac = process.platform === 'darwin';
 
   mainWindow = new BrowserWindow({
-    width: 1180,
-    height: 780,
-    minWidth: 900,
-    minHeight: 600,
+    width: 1280,
+    height: 820,
+    minWidth: 960,
+    minHeight: 640,
     title: 'HuiNet',
-    // Transparent + vibrancy → liquid glass behind the UI
-    backgroundColor: '#00000000',
-    transparent: true,
+    // Cursor Agent–style solid dark shell
+    backgroundColor: '#141414',
+    transparent: false,
     ...(isMac
       ? {
           titleBarStyle: 'hiddenInset',
-          trafficLightPosition: { x: 16, y: 18 },
-          vibrancy: 'fullscreen-ui',
-          visualEffectState: 'active',
+          trafficLightPosition: { x: 14, y: 14 },
         }
       : {
           frame: true,

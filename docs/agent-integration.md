@@ -14,13 +14,19 @@ The Hub runs only on this machine (`127.0.0.1`). Prefer **MCP** for Claude Code 
 
 | Tool | 作用 |
 |------|------|
-| `list_agents` | 本机已发现 / 已连接 Agent |
-| `get_agent_info` | 单个 Agent 详情 |
-| `send_message` | 经总线发消息（`to` 可为 agentId 或 `*`） |
+| `list_agents` | 本机已开放 A2A 的 peers |
+| `get_agent_info` / `agent_card` | 详情与能力卡片 |
+| `send_message` | 经总线发消息（落入对方 **mailbox**） |
+| `inbox_check` / `inbox_ack` | 轮询 / 确认收件箱（MCP 无 WS 推送） |
+| `task_create` / `task_list` / `task_complete` | 本机轻量任务闭环 |
+| `fabric_brief` | 拉取钉选工作集 |
 | `context_search` / `context_upsert` | 读写共享记忆 |
-| `context_migrate` | 导出迁移用 Markdown |
-| `context_import` | 从 claude/codex/cursor 导入会话摘要 |
+| `context_migrate` / `context_import` | 迁移包 / 会话导入 |
 | `scan_agents` | 重新扫描本机 |
+
+推荐工作流：对方 `send_message` / `ask_agent` → 你 `inbox_check` → 处理 → `inbox_ack`；或 `task_create` → 对方 `task_complete`。
+
+公网：`net_fetch` 经 Hub 出站（私网/metadata 已拦截）。本机命令：桌面「终端」或 `POST /api/terminal/run`。
 
 环境变量：
 
@@ -38,12 +44,18 @@ The Hub runs only on this machine (`127.0.0.1`). Prefer **MCP** for Claude Code 
 
 入站通知：`a2a.connected`、`a2a.message`。
 
+任务：`a2a.task.execute` → 返回 `taskId`；完成后 `a2a.task.result`。
+
 ## 3. HTTP API（UI / 脚本）
 
 基址：`http://127.0.0.1:19527`
 
 - `GET /api/status`
-- `GET /api/agents` · `POST /api/agents/scan`
+- `GET /api/agents` · `POST /api/agents/scan` · `GET /api/agents/:id/card`
+- `GET /api/card` · `GET /.well-known/agent.json`
+- `GET /api/mailbox` · `POST /api/mailbox/read`
+- `GET|POST /api/tasks` · `GET|POST /api/tasks/:id`
+- `GET /api/brief` · `POST /api/brief/pin|unpin|clear`
 - `GET|POST /api/context` · `POST /api/context/import` · `POST /api/context/migrate`
 - `GET /api/bus/messages` · `POST /api/bus/send`
 - `GET /api/mcp/config`

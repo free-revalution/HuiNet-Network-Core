@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.4.0 — Session nodes + Obsidian-inspired fabric tools
+
+- **Per-conversation nodes** — Cursor / Claude Code / Codex chats become fabric peers (`parent:session:uuid`)
+- **JSON Canvas export** — `GET /api/fabric/canvas` + UI / MCP `fabric_canvas` (Obsidian-compatible)
+- **Memory [[wikilinks]]** — 1-hop related via links / backlinks / project / tags (`/api/context/:id/related`, MCP `context_related`)
+- **Project scope** — filter brief + memory by project; write memories into a project
+- **Consult mode** — fan-out one prompt to many peers (`POST /api/bus/consult`, MCP `consult_agents`)
+
+## 2.3.0 — Fabric collaboration core
+
+- **Mailbox** — durable per-agent inbox (`/api/mailbox`, MCP `inbox_check` / `inbox_ack`) so MCP clients receive bus traffic without WS push
+- **Fabric tasks** — full create / complete / fail lifecycle; WS `a2a.task.execute` + `a2a.task.result`; CLI `huinet tasks`
+- **Fabric Brief** — pin memories into a shared working set (`/api/brief`, MCP `fabric_brief`)
+- **Agent Cards** — `/api/card`, `/api/agents/:id/card`, `/.well-known/agent.json`; MCP `agent_card`
+- Desktop **协作** layer: brief + tasks + inbox; memory pin; live/ws presence on roster
+- Demand-driven: A2A Agent Card / task patterns, local shared-memory (SuperLocalMemory-class), MCP delivery gap
+
 ## 2.2.0 — Desktop fabric
 
 - Electron desktop shell: frameless macOS titlebar, vibrancy/glass UI, tray quit

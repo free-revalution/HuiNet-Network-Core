@@ -8,6 +8,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from 'react';
 import type { Agent, BusMessage } from './api';
+import type { TFunction } from './i18n';
 
 type Props = {
   agents: Agent[];
@@ -17,48 +18,39 @@ type Props = {
   tokenSum: number;
   memoryCount: number;
   openCount: number;
+  t: TFunction;
   onSelect: (id: string) => void;
   onToggle: (agent: Agent, open: boolean) => void;
 };
 
 type Pos = { x: number; y: number };
 
-function StoryRing({ id }: { id: string }) {
-  return (
-    <svg className="story-ring" aria-hidden viewBox="0 0 100 100">
-      <defs>
-        <linearGradient id={`story-grad-${id}`} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#f58529" />
-          <stop offset="35%" stopColor="#dd2a7b" />
-          <stop offset="70%" stopColor="#8134af" />
-          <stop offset="100%" stopColor="#515bd4" />
-        </linearGradient>
-      </defs>
-      <circle
-        className="story-stroke"
-        cx="50"
-        cy="50"
-        r="47"
-        pathLength={100}
-        fill="none"
-        stroke={`url(#story-grad-${id})`}
-        strokeWidth={3.2}
-        strokeLinecap="round"
-        strokeDasharray="22 78"
-      />
-    </svg>
-  );
-}
+type PeerLink = {
+  a: string;
+  b: string;
+  tokens: number;
+  recent: boolean;
+};
 
 const VW = 1200;
 const VH = 720;
-/** Hub diameter in viewBox units — keep in sync with .hub-chip width calc(100% * 168 / 1200) */
-const HUB_DIAM = 168;
-const HUB_R_DEFAULT = HUB_DIAM / 2;
-const POS_KEY = 'huinet.fabric.positions.v1';
+const POS_KEY = 'huinet.fabric.positions.v2';
+const SKIP = new Set(['ui', 'hub', 'hub-net', 'mcp-client', 'cli', 'anonymous', '*']);
 
-function shortName(name: string): string {
-  return name
+function shortName(agent: Agent): string {
+  if (agent.kind === 'session' && agent.title) {
+    const t = agent.title.length > 22 ? `${agent.title.slice(0, 21)}…` : agent.title;
+    const host =
+      agent.parentId === 'claude-code'
+        ? 'Claude'
+        : agent.parentId === 'cursor'
+          ? 'Cursor'
+          : agent.parentId === 'codex'
+            ? 'Codex'
+            : agent.parentId || 'Chat';
+    return `${host} · ${t}`;
+  }
+  return agent.name
     .replace(/\s+(CLI|Code|Desktop)$/i, '')
     .replace(/^OpenAI\s+/i, '')
     .replace(/^GitHub\s+/i, '')
@@ -68,14 +60,14 @@ function shortName(name: string): string {
 function defaultPositions(agents: Agent[]): Record<string, Pos> {
   const cx = VW / 2;
   const cy = VH / 2;
-  const r = 220;
+  const r = 240;
   const n = Math.max(agents.length, 1);
   const out: Record<string, Pos> = {};
   agents.forEach((a, i) => {
     const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
     out[a.id] = {
       x: cx + Math.cos(angle) * r,
-      y: cy + Math.sin(angle) * (r * 0.88),
+      y: cy + Math.sin(angle) * (r * 0.86),
     };
   });
   return out;
@@ -104,32 +96,35 @@ function edgePath(x1: number, y1: number, x2: number, y2: number, bend: number):
   return `M ${x1} ${y1} Q ${mx - dy * bend} ${my + dx * bend} ${x2} ${y2}`;
 }
 
-/** Start at hub gray border (not center), end at agent. */
-function edgeFromHubBorder(
-  hcx: number,
-  hcy: number,
-  x2: number,
-  y2: number,
-  hubR: number,
-  bend: number
-): string {
-  const dx = x2 - hcx;
-  const dy = y2 - hcy;
-  const len = Math.hypot(dx, dy) || 1;
-  const x1 = hcx + (dx / len) * hubR;
-  const y1 = hcy + (dy / len) * hubR;
-  return edgePath(x1, y1, x2, y2, bend);
-}
-
 function strokeForTokens(tokens: number, max: number): number {
-  // ViewBox stroke widths — clear thin vs thick (no non-scaling, scales with graph)
-  if (tokens <= 0 || max <= 0) return 2;
+  if (tokens <= 0 || max <= 0) return 2.4;
   const t = Math.pow(Math.min(1, tokens / max), 0.55);
-  return 2.5 + t * 14;
+  return 2.4 + t * 12;
 }
 
-function tokensFromMessages(messages: BusMessage[]): Record<string, number> {
-  const map: Record<string, number> = {};
+/** Peer links from real bus traffic only — no hub star. */
+function buildPeerLinks(
+  messages: BusMessage[],
+  agentIds: Set<string>
+): PeerLink[] {
+  const map = new Map<string, PeerLink>();
+  const now = Date.now();
+
+  const bump = (a: string, b: string, tokens: number, ts: number) => {
+    if (!agentIds.has(a) || !agentIds.has(b) || a === b) return;
+    if (SKIP.has(a) || SKIP.has(b)) return;
+    const [x, y] = a < b ? [a, b] : [b, a];
+    const key = `${x}|${y}`;
+    const prev = map.get(key);
+    const recent = now - ts < 20_000;
+    if (!prev) {
+      map.set(key, { a: x, b: y, tokens, recent });
+    } else {
+      prev.tokens += tokens;
+      prev.recent = prev.recent || recent;
+    }
+  };
+
   for (const m of messages) {
     const raw =
       typeof m.tokens === 'number' && m.tokens > 0
@@ -143,14 +138,16 @@ function tokensFromMessages(messages: BusMessage[]): Record<string, number> {
               ).length / 4
             )
           );
-    const bump = (id: string) => {
-      if (!id || id === '*' || id === 'ui' || id === 'hub') return;
-      map[id] = (map[id] || 0) + raw;
-    };
-    bump(m.from);
-    bump(m.to);
+    if (m.to === '*') {
+      for (const id of agentIds) {
+        if (id !== m.from) bump(m.from, id, raw, m.timestamp);
+      }
+    } else {
+      bump(m.from, m.to, raw, m.timestamp);
+    }
   }
-  return map;
+
+  return Array.from(map.values());
 }
 
 export function NetworkCanvas({
@@ -161,6 +158,7 @@ export function NetworkCanvas({
   tokenSum,
   memoryCount,
   openCount,
+  t,
   onSelect,
   onToggle,
 }: Props) {
@@ -187,11 +185,7 @@ export function NetworkCanvas({
     null
   );
   const stageRef = useRef<HTMLDivElement>(null);
-  const stageBoxRef = useRef<HTMLDivElement>(null);
-  const hubChipRef = useRef<HTMLButtonElement>(null);
-  const [hubR, setHubR] = useState(HUB_R_DEFAULT);
 
-  // Merge new agents into positions without wiping user layout
   useEffect(() => {
     setPositions((prev) => {
       const next = { ...prev };
@@ -215,56 +209,32 @@ export function NetworkCanvas({
     }
   }, [positions]);
 
-  // Merge API totals + message-derived so edge width always tracks traffic
-  const edgeTokenMap = useMemo(() => {
-    const map: Record<string, number> = { ...tokenTotals };
-    const fromMsgs = tokensFromMessages(messages);
-    for (const [id, n] of Object.entries(fromMsgs)) {
-      map[id] = Math.max(map[id] || 0, n);
-    }
-    return map;
-  }, [messages, tokenTotals]);
+  const agentIds = useMemo(() => new Set(agents.map((a) => a.id)), [agents]);
 
-  const maxTokens = useMemo(() => {
-    const vals = Object.values(edgeTokenMap).filter((n) => n > 0);
-    if (!vals.length) return 1;
-    return Math.max(...vals);
-  }, [edgeTokenMap]);
+  const peerLinks = useMemo(
+    () => buildPeerLinks(messages, agentIds),
+    [messages, agentIds]
+  );
 
-  // Measure hub radius in viewBox units so edges meet the gray border
-  useEffect(() => {
-    const stage = stageBoxRef.current;
-    const hub = hubChipRef.current;
-    if (!stage || !hub) return;
-    const measure = () => {
-      const sr = stage.getBoundingClientRect();
-      const hr = hub.getBoundingClientRect();
-      if (sr.width < 1) return;
-      const r = (hr.width / 2) * (VW / sr.width);
-      if (r > 8) setHubR(r);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(stage);
-    ro.observe(hub);
-    return () => ro.disconnect();
-  }, [agents.length, openCount]);
+  const maxLinkTokens = useMemo(() => {
+    const vals = peerLinks.map((l) => l.tokens).filter((n) => n > 0);
+    return vals.length ? Math.max(...vals) : 1;
+  }, [peerLinks]);
 
-  const activeIds = useMemo(() => {
+  /** Live = process running / WS registered / recent peer traffic — NOT mere a2aOpen */
+  const liveIds = useMemo(() => {
     const now = Date.now();
     const set = new Set<string>();
-    for (const m of messages) {
-      if (now - m.timestamp > 20_000) continue;
-      if (m.from && m.from !== 'ui' && m.from !== 'hub' && m.from !== '*') {
-        set.add(m.from);
-      }
-      if (m.to && m.to !== '*' && m.to !== 'hub' && m.to !== 'ui') set.add(m.to);
-    }
     for (const a of agents) {
-      if (a.presence === 'running' || a.presence === 'connected') set.add(a.id);
+      if (a.presence === 'running' || a.wsConnected) set.add(a.id);
+    }
+    for (const m of messages) {
+      if (now - m.timestamp > 12_000) continue;
+      if (m.from && agentIds.has(m.from)) set.add(m.from);
+      if (m.to && agentIds.has(m.to)) set.add(m.to);
     }
     return set;
-  }, [messages, agents]);
+  }, [messages, agents, agentIds]);
 
   const clientToWorld = useCallback(
     (clientX: number, clientY: number) => {
@@ -273,7 +243,6 @@ export function NetworkCanvas({
       const rect = el.getBoundingClientRect();
       const sx = (clientX - rect.left - pan.x) / zoom;
       const sy = (clientY - rect.top - pan.y) / zoom;
-      // stage uses aspect box; map to viewBox
       const x = (sx / rect.width) * VW;
       const y = (sy / rect.height) * VH;
       return { x, y };
@@ -283,23 +252,18 @@ export function NetworkCanvas({
 
   const onWheel = (e: ReactWheelEvent) => {
     e.preventDefault();
-
-    // macOS trackpad pinch → wheel + ctrlKey; two-finger scroll → pan
     const isPinch = e.ctrlKey;
     const pixelScale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 32 : 1;
     const dx = e.deltaX * pixelScale;
     const dy = e.deltaY * pixelScale;
 
     if (isPinch) {
-      // Pinch zoom: very soft (trackpad sends many tiny pixel events)
       const clamped = Math.max(-12, Math.min(12, dy));
       const factor = Math.exp(-clamped * 0.012);
       setZoom((z) => Math.min(2.2, Math.max(0.55, z * factor)));
       return;
     }
 
-    // Two-finger scroll pans the fabric (natural trackpad feel)
-    // Mouse wheel (chunky delta, little/no deltaX) still zooms gently
     const looksLikeMouseWheel =
       Math.abs(dx) < 0.5 && Math.abs(dy) >= 20 && e.deltaMode !== 0;
 
@@ -310,10 +274,7 @@ export function NetworkCanvas({
       return;
     }
 
-    setPan((p) => ({
-      x: p.x - dx,
-      y: p.y - dy,
-    }));
+    setPan((p) => ({ x: p.x - dx, y: p.y - dy }));
   };
 
   const onStagePointerDown = (e: ReactPointerEvent) => {
@@ -382,10 +343,19 @@ export function NetworkCanvas({
     stageRef.current?.setPointerCapture(e.pointerId);
   };
 
+  const tokLabel =
+    tokenSum >= 1000 ? `${(tokenSum / 1000).toFixed(1)}k` : String(tokenSum);
+
   return (
     <div className="fabric">
       <div className="fabric-hint">
-        双指滑动平移 · 捏合缩放 · 拖节点摆位 · 双击接入/离开
+        {t('fabric.hint', {
+          open: openCount,
+          total: agents.length,
+          links: peerLinks.length,
+          tokens: tokLabel,
+          mem: memoryCount,
+        })}
       </div>
       <div
         className={`fabric-viewport ${panning ? 'panning' : ''} ${draggingId ? 'dragging' : ''}`}
@@ -408,123 +378,59 @@ export function NetworkCanvas({
             <span className="blob b3" />
           </div>
 
-          <div className="fabric-stage" ref={stageBoxRef}>
+          <div className="fabric-stage">
             <svg
               className="fabric-svg"
               viewBox={`0 0 ${VW} ${VH}`}
               preserveAspectRatio="xMidYMid meet"
             >
-              <defs>
-                <linearGradient id="edgeLive" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="rgba(0,0,0,0.05)" />
-                  <stop offset="50%" stopColor="rgba(0,0,0,0.55)" />
-                  <stop offset="100%" stopColor="rgba(0,0,0,0.05)" />
-                </linearGradient>
-                <linearGradient id="edgeDim" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="rgba(0,0,0,0.02)" />
-                  <stop offset="50%" stopColor="rgba(0,0,0,0.16)" />
-                  <stop offset="100%" stopColor="rgba(0,0,0,0.02)" />
-                </linearGradient>
-              </defs>
-
-              <circle className="orbit o1" cx={cx} cy={cy} r={268} />
-              <circle className="orbit o2" cx={cx} cy={cy} r={210} />
-
-              {agents.map((agent, i) => {
-                const pos = positions[agent.id] || { x: cx, y: cy };
-                const open = Boolean(agent.a2aOpen);
-                const tokens = edgeTokenMap[agent.id] || 0;
-                const width = open
-                  ? strokeForTokens(tokens, maxTokens)
-                  : 1.15;
-                const d = edgeFromHubBorder(
-                  cx,
-                  cy,
-                  pos.x,
-                  pos.y,
-                  hubR,
-                  i % 2 === 0 ? 0.1 : -0.08
+              {peerLinks.map((link, i) => {
+                const pa = positions[link.a] || { x: cx, y: cy };
+                const pb = positions[link.b] || { x: cx, y: cy };
+                const width = Math.max(
+                  2.2,
+                  strokeForTokens(link.tokens, maxLinkTokens)
+                );
+                const d = edgePath(
+                  pa.x,
+                  pa.y,
+                  pb.x,
+                  pb.y,
+                  i % 2 === 0 ? 0.08 : -0.06
                 );
                 return (
-                  <g key={`e-${agent.id}`}>
+                  <g key={`${link.a}-${link.b}`}>
                     <path
                       d={d}
-                      className={`edge ${open ? 'open' : 'idle'} ${tokens > 0 ? 'hot' : ''}`}
+                      className={`edge open ${link.recent ? 'hot' : ''}`}
                       fill="none"
                       strokeWidth={width}
-                      stroke={open ? (tokens > 0 ? '#1a1a1a' : '#6a6a6a') : '#b0b0b0'}
+                      stroke={link.recent ? '#5b9cff' : '#6a7a90'}
                       strokeLinecap="round"
-                      opacity={open ? (tokens > 0 ? 0.9 : 0.5) : 0.32}
+                      opacity={link.recent ? 0.95 : 0.7}
                     />
-                    {open && tokens > 0 && (
-                      <circle
-                        r={Math.min(5.5, 2.4 + width * 0.2)}
-                        className="packet"
-                      >
-                        <animateMotion
-                          dur={`${Math.max(1.2, 4.0 - width * 0.22)}s`}
-                          repeatCount="indefinite"
-                          path={d}
-                        />
-                      </circle>
-                    )}
+                    <circle
+                      r={link.recent ? Math.min(5, 2.2 + width * 0.18) : 2}
+                      fill="#5b9cff"
+                      className="packet"
+                    >
+                      <animateMotion
+                        dur={`${Math.max(1.5, 4.2 - width * 0.2)}s`}
+                        repeatCount="indefinite"
+                        path={d}
+                      />
+                    </circle>
                   </g>
                 );
               })}
-
             </svg>
 
             <div className="fabric-nodes">
-              {(() => {
-                const net = agents.length ? openCount / agents.length : 0;
-                const tok = Math.min(1, tokenSum / 4000);
-                const mem = Math.min(1, memoryCount / 200);
-                const liveN = messages.filter(
-                  (m) => Date.now() - m.timestamp < 20_000
-                ).length;
-                const working = openCount > 0 || liveN > 0;
-                const loadPct = Math.round(
-                  Math.min(
-                    1,
-                    net * 0.35 +
-                      tok * 0.35 +
-                      mem * 0.15 +
-                      Math.min(1, liveN / 8) * 0.15
-                  ) * 100
-                );
-                const tokLabel =
-                  tokenSum >= 1000
-                    ? `${(tokenSum / 1000).toFixed(1)}k`
-                    : String(tokenSum);
-                return (
-                  <button
-                    type="button"
-                    ref={hubChipRef}
-                    className={`hub-chip ${working ? 'live' : ''}`}
-                    style={{
-                      left: `${(cx / VW) * 100}%`,
-                      top: `${(cy / VH) * 100}%`,
-                    }}
-                    onClick={() => onSelect('__hub__')}
-                    title="Hub"
-                  >
-                    {working && <StoryRing id="hub" />}
-                    <span className="hub-chip-kicker">HUB</span>
-                    <span className="hub-chip-load">{loadPct}%</span>
-                    <span className="hub-chip-stats">
-                      <span>{openCount}/{agents.length} net</span>
-                      <span>{tokLabel} tok</span>
-                      <span>{memoryCount} mem</span>
-                    </span>
-                  </button>
-                );
-              })()}
-
               {agents.map((agent) => {
                 const pos = positions[agent.id] || { x: cx, y: cy };
                 const open = Boolean(agent.a2aOpen);
                 const selected = selectedId === agent.id;
-                const active = activeIds.has(agent.id);
+                const live = liveIds.has(agent.id);
                 const tokens = tokenTotals[agent.id] || 0;
                 return (
                   <button
@@ -534,7 +440,7 @@ export function NetworkCanvas({
                       'node-chip',
                       open ? 'open' : '',
                       selected ? 'selected' : '',
-                      active ? 'live' : '',
+                      live ? 'live' : '',
                       draggingId === agent.id ? 'dragging' : '',
                     ]
                       .filter(Boolean)
@@ -549,7 +455,7 @@ export function NetworkCanvas({
                       onToggle(agent, !open);
                     }}
                   >
-                    {active && (
+                    {live && (
                       <svg
                         className="story-ring"
                         aria-hidden
@@ -571,7 +477,7 @@ export function NetworkCanvas({
                           </linearGradient>
                         </defs>
                         <rect
-                          className="story-stroke"
+                          className="story-stroke fast"
                           x="2"
                           y="2"
                           width="116"
@@ -587,12 +493,15 @@ export function NetworkCanvas({
                         />
                       </svg>
                     )}
-                    <span className={`node-pulse ${open ? 'on' : ''}`} />
-                    <span className="node-name">{shortName(agent.name)}</span>
+                    <span
+                      className={`node-pulse ${live ? 'on' : open ? 'open' : ''}`}
+                    />
+                    <span className="node-name">{shortName(agent)}</span>
                     {tokens > 0 && (
                       <span className="node-tok">{tokens.toLocaleString()}t</span>
                     )}
                     {agent.mcpWired && <span className="node-tag">mcp</span>}
+                    {live && <span className="node-tag live">live</span>}
                   </button>
                 );
               })}
@@ -602,7 +511,10 @@ export function NetworkCanvas({
       </div>
 
       {!agents.length && (
-        <div className="fabric-empty">扫描本机后，节点会落入这张织物</div>
+        <div className="fabric-empty">{t('fabric.empty')}</div>
+      )}
+      {agents.length > 0 && peerLinks.length === 0 && (
+        <div className="fabric-empty soft">{t('fabric.emptySoft')}</div>
       )}
     </div>
   );

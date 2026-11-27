@@ -396,6 +396,129 @@ bus
     console.log(JSON.stringify(data.messages, null, 2));
   });
 
+bus
+  .command('inbox <agentId>')
+  .description('Poll an agent mailbox (for MCP peers without WS push)')
+  .option('--all', 'Include read messages')
+  .action(async (agentId: string, options) => {
+    await ensureHub();
+    const qs = options.all ? '' : '&unread=1';
+    const data = await httpJson(
+      `/api/mailbox?agentId=${encodeURIComponent(agentId)}${qs}`
+    );
+    console.log(JSON.stringify(data, null, 2));
+  });
+
+// =============================================================================
+// Tasks
+// =============================================================================
+const tasksCmd = program.command('tasks').description('Fabric A2A tasks');
+
+tasksCmd
+  .command('list')
+  .option('--to <id>', 'Filter by assignee')
+  .option('--status <status>', 'pending|running|completed|failed')
+  .action(async (options) => {
+    await ensureHub();
+    const q = new URLSearchParams();
+    if (options.to) q.set('to', options.to);
+    if (options.status) q.set('status', options.status);
+    const qs = q.toString();
+    const data = await httpJson(`/api/tasks${qs ? `?${qs}` : ''}`);
+    console.log(JSON.stringify(data, null, 2));
+  });
+
+tasksCmd
+  .command('create <to>')
+  .requiredOption('--title <text>', 'Task title')
+  .option('--description <text>', 'Details')
+  .option('--from <id>', 'Requester id', 'cli')
+  .action(async (to: string, options) => {
+    await ensureHub();
+    const task = await httpJson('/api/tasks', {
+      method: 'POST',
+      body: {
+        to,
+        title: options.title,
+        description: options.description,
+        from: options.from,
+      },
+    });
+    console.log('✓ Task', (task as { id: string }).id);
+  });
+
+tasksCmd
+  .command('complete <taskId>')
+  .option('--result <text>', 'Result text')
+  .option('--fail <reason>', 'Mark failed with reason')
+  .action(async (taskId: string, options) => {
+    await ensureHub();
+    const task = await httpJson(`/api/tasks/${encodeURIComponent(taskId)}`, {
+      method: 'POST',
+      body: options.fail
+        ? { status: 'failed', error: options.fail }
+        : {
+            status: 'completed',
+            result: options.result ? { text: options.result } : { ok: true },
+          },
+    });
+    console.log('✓', (task as { status: string }).status, taskId);
+  });
+
+const netCmd = program.command('net').description('Outbound internet via local hub');
+netCmd
+  .command('fetch <url>')
+  .description('GET/POST a public URL through the hub bridge')
+  .option('--method <m>', 'HTTP method', 'GET')
+  .option('--body <text>', 'Request body')
+  .action(async (url: string, options) => {
+    await ensureHub();
+    const data = await httpJson('/api/net/fetch', {
+      method: 'POST',
+      body: { url, method: options.method, body: options.body },
+    });
+    console.log(JSON.stringify(data, null, 2));
+  });
+
+// =============================================================================
+// Brief
+// =============================================================================
+const briefCmd = program
+  .command('brief')
+  .description('Pinned fabric working-set for local agents');
+
+briefCmd
+  .command('show')
+  .description('Print the fabric brief markdown')
+  .action(async () => {
+    await ensureHub();
+    const data = await httpJson<{ markdown: string }>('/api/brief');
+    console.log(data.markdown);
+  });
+
+briefCmd
+  .command('pin <memoryId>')
+  .option('--note <text>', 'Why this is pinned')
+  .action(async (memoryId: string, options) => {
+    await ensureHub();
+    await httpJson('/api/brief/pin', {
+      method: 'POST',
+      body: { memoryId, pinnedBy: 'cli', note: options.note },
+    });
+    console.log('✓ Pinned', memoryId);
+  });
+
+briefCmd
+  .command('unpin <memoryId>')
+  .action(async (memoryId: string) => {
+    await ensureHub();
+    await httpJson('/api/brief/unpin', {
+      method: 'POST',
+      body: { memoryId },
+    });
+    console.log('✓ Unpinned', memoryId);
+  });
+
 // =============================================================================
 // MCP
 // =============================================================================

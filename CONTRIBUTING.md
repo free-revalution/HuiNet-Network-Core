@@ -37,6 +37,15 @@ Feature requests are welcome. Please provide:
 - Alternative approaches considered
 - Potential impact
 
+### Docs (README)
+
+User-facing docs are bilingual. Keep them in parity:
+
+- English: `README.md`
+- Simplified Chinese: `README.zh-CN.md`
+
+Same sections, same commands/paths. Brand mark lives in `docs/assets/logo.svg`.
+
 ### Pull Requests
 
 We welcome pull requests! Before submitting:

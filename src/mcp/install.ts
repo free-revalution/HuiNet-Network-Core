@@ -206,9 +206,12 @@ export function wireMcpTargets(
   return targets.map((t) => wireMcpTarget(t, spec));
 }
 
+/** Map runtime or session node ids onto MCP install targets. */
 export function agentIdToMcpTarget(agentId: string): string | null {
-  if (agentId === 'claude-code' || agentId === 'claude') return 'claude';
-  if (agentId === 'cursor') return 'cursor';
-  if (agentId === 'codex') return 'codex';
+  const runtime =
+    agentId.match(/^([a-z0-9-]+):session:/i)?.[1] ?? agentId;
+  if (runtime === 'claude-code' || runtime === 'claude') return 'claude';
+  if (runtime === 'cursor') return 'cursor';
+  if (runtime === 'codex') return 'codex';
   return null;
 }

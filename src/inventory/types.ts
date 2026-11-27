@@ -6,8 +6,10 @@ export type AgentPresence = 'unknown' | 'installed' | 'running' | 'connected';
 
 export type AgentCapability = 'mcp' | 'skills' | 'sessions' | 'cli' | 'ide';
 
+export type AgentKind = 'runtime' | 'session';
+
 export interface DiscoveredAgent {
-  /** Stable id e.g. claude-code, cursor, codex */
+  /** Stable id e.g. claude-code, cursor, or cursor:session:<uuid> */
   id: string;
   /** Display name */
   name: string;
@@ -31,6 +33,18 @@ export interface DiscoveredAgent {
   connected?: boolean;
   /** Manual override from agents.yaml */
   manual?: boolean;
+  /** runtime = installed product; session = one conversation */
+  kind?: AgentKind;
+  /** Parent runtime id when kind=session */
+  parentId?: string;
+  /** Conversation / transcript id */
+  sessionId?: string;
+  /** Short chat title derived from first prompt */
+  title?: string;
+  /** Project / workspace label if known */
+  project?: string;
+  /** Session file mtime */
+  mtime?: number;
 }
 
 export interface InventorySnapshot {

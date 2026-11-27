@@ -10,6 +10,7 @@ import {
   getHuiNetPaths,
   type HuiNetPaths,
 } from '../paths';
+import { linksOf, relatedMemories, type RelatedHit } from './links';
 import type {
   ContextIndex,
   MemoryEntry,
@@ -168,16 +169,34 @@ export class ContextStore {
     return out;
   }
 
-  search(query: string, limit = 20): MemoryEntry[] {
+  search(
+    query: string,
+    limit = 20,
+    filter?: { project?: string }
+  ): MemoryEntry[] {
     const q = query.toLowerCase();
-    return this.list({ limit: 500 })
+    return this.list({ limit: 500, project: filter?.project })
       .filter(
         (e) =>
           e.title.toLowerCase().includes(q) ||
           e.body.toLowerCase().includes(q) ||
-          e.tags.some((t) => t.toLowerCase().includes(q))
+          e.tags.some((t) => t.toLowerCase().includes(q)) ||
+          linksOf(e).some((l) => l.toLowerCase().includes(q))
       )
       .slice(0, limit);
+  }
+
+  /** Explicit [[wikilinks]] on a memory. */
+  links(id: string): string[] {
+    const entry = this.get(id);
+    return entry ? linksOf(entry) : [];
+  }
+
+  /** 1-hop related memories (links + project/tag). */
+  related(id: string, limit = 12): RelatedHit[] {
+    const seed = this.get(id);
+    if (!seed) return [];
+    return relatedMemories(seed, this.list({ limit: 500 }), limit);
   }
 
   delete(id: string): boolean {

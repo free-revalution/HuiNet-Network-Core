@@ -9,6 +9,7 @@ import {
   type HuiNetPaths,
 } from '../paths';
 import { getDetectorRegistry } from './detectors';
+import { expandSessionNodes } from './sessions';
 import type {
   AgentDetector,
   DiscoveredAgent,
@@ -44,6 +45,7 @@ export class AgentScanner {
       try {
         const result = await detector.detect();
         if (result) {
+          result.kind = result.kind ?? 'runtime';
           if (this.connectedIds.has(result.id)) {
             result.presence = 'connected';
             result.connected = true;
@@ -57,6 +59,15 @@ export class AgentScanner {
           (err as Error).message
         );
       }
+    }
+
+    // One node per conversation (Cursor / Claude / Codex sessions)
+    try {
+      const expanded = expandSessionNodes(agents);
+      agents.length = 0;
+      agents.push(...expanded);
+    } catch (err) {
+      console.warn('Session expansion failed:', (err as Error).message);
     }
 
     // Merge manual agents from agents.yaml-style JSON sidecar if present

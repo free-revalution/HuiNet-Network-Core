@@ -80,3 +80,22 @@ export function setManyA2aOpen(
   saveNetworkAccess(state, p);
   return state;
 }
+
+/** Drop A2A flags for agents that no longer appear in inventory (remnants). */
+export function pruneA2aOpen(
+  liveAgentIds: string[],
+  paths?: HuiNetPaths
+): NetworkAccessState {
+  const p = paths ?? getHuiNetPaths();
+  const state = loadNetworkAccess(p);
+  const live = new Set(liveAgentIds);
+  let changed = false;
+  for (const id of Object.keys(state.a2aOpen)) {
+    if (!live.has(id)) {
+      delete state.a2aOpen[id];
+      changed = true;
+    }
+  }
+  if (changed) saveNetworkAccess(state, p);
+  return state;
+}
